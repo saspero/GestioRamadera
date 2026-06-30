@@ -2,7 +2,28 @@
 
 > **Versió:** 2.0.0  
 > **Última actualització:** Juny de 2026  
-> **Motor:** PostgreSQL 16+
+> **Motor:** PostgreSQL 16+  
+> **Hosting:** Supabase (PostgreSQL gestionat)
+
+---
+
+## 0. ⚠️ Nota Crítica sobre l'Accés a la Base de Dades
+
+Aquest projecte usa **Supabase únicament com a infraestructura de PostgreSQL** (hosting, backups automàtics, monitorització), **NO com a backend-as-a-service amb PostgREST**.
+
+**Motiu:** El model de schema per tenant (secció 1) requereix executar `SET search_path TO tenant_XXXXX` de forma dinàmica per cada petició, segons l'usuari autenticat. L'API automàtica de Supabase (PostgREST) només exposa el schema `public` per defecte i no està pensada per a aquest patró amb schemas dinàmics il·limitats.
+
+**Implicacions per a la implementació:**
+
+| Element | Decisió |
+|---------|---------|
+| Connexió a la BD | El **backend propi** es connecta amb la connection string PostgreSQL directa de Supabase (host, port, usuari, contrasenya), usant un client SQL estàndard |
+| API REST de Supabase (PostgREST) | **No s'utilitza** |
+| Claus `anon` / `service_role` de Supabase | **No s'utilitzen** al frontend |
+| Frontend | Mai es connecta directament a Supabase; totes les peticions passen pel backend propi |
+| Row Level Security (RLS) | Es manté com a **capa addicional de defensa** (secció 4 de `03_multitenancy.md`), però **no és l'única barrera** perquè el backend ja filtra per `search_path` abans d'executar cap query |
+
+> Vegeu també la nota equivalent a [`README.md`](./README.md).
 
 ---
 
