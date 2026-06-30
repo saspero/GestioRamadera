@@ -59,13 +59,13 @@ nom_medicament,principi_actiu,lot,quantitat,unitat,posologia,preu,dies_supressio
 **Exemple de fitxer vàlid:**
 ```csv
 nom_medicament,principi_actiu,lot,quantitat,unitat,posologia,preu,dies_supressio
-"Amoxicil·lina 10%","Amoxicil·lina trihidrat","LOT-2026-X",500,ml,"1ml/10kg cada 24h",45.50,14
-"Oxitetraciclina 20%","Oxitetraciclina","LOT-2026-Y",250,ml,"2ml/10kg",32.00,28
-"Vitamina E + Seleni","Tocoferol / Seleni","LOT-2026-Z",100,ml,,18.75,0
+"Amoxicil·lina 10%","Amoxicil·lina trihidrat","LOT-2026-X",500,ml,"1ml/10kg cada 24h","45,50",14
+"Oxitetraciclina 20%","Oxitetraciclina","LOT-2026-Y",250,ml,"2ml/10kg","32,00",28
+"Vitamina E + Seleni","Tocoferol / Seleni","LOT-2026-Z",100,ml,,"18,75",0
 ```
 
 **Regles de format:**
-- El separador decimal és el **punt** (`.`), no la coma.
+- El separador decimal és la **coma** (`,`) i el separador de milers és el punt (`.`) — Ex: `1.234,56`. Nota: el format intern de la BD és amb punt; la conversió la fa la capa d'aplicació en llegir el CSV.
 - El camp `posologia` és opcional; pot quedar buit (dues comes consecutives o camp buit entre cometes).
 - El camp `dies_supressio` ha de ser un enter >= 0.
 - El camp `unitat` ha de ser un valor de text lliure (Ex: `ml`, `g`, `unitats`).

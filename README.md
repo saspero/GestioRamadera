@@ -87,7 +87,7 @@ Suporta els tres models d'explotació principals:
 - **Format:** Markdown estàndard (compatible GitHub/GitLab)
 - **Versionat:** Semver per als documents principals (`V1`, `V2`...)
 - **Dates:** Format `AAAA-MM-DD`
-- **Moneda:** Euro (€), decimals amb punt (`.`)
+- **Moneda:** Euro (€), separador decimal amb coma (`,`) i separador de milers amb punt (`.`) — Ex: `1.234,56 €`
 
 ---
 
