@@ -48,6 +48,8 @@ Suporta els tres models d'explotació principals:
 | **Motor de BD** | PostgreSQL 16+ | Suport natiu de schemas, RLS, JSONB, extensibilitat |
 | **Estratègia multitenant** | Schema per tenant | Alt aïllament, RGPD simplificat, cost moderat |
 | **Frontend** | PWA | Sense instal·lació, offline-ready, compatible mòbil |
+| **Hosting BD** | Supabase (PostgreSQL gestionat) | Backups, monitorització i alta disponibilitat sense gestionar infraestructura pròpia |
+| **Accés a la BD** | Connexió PostgreSQL directa des del backend (NO via API REST/PostgREST de Supabase) | Imprescindible per a `SET search_path` dinàmic (schemas per tenant) i per mantenir l'autenticació pròpia |
 | **Autenticació** | JWT + OAuth2 | Estàndard industrial, compatible amb IoT futur |
 | **Rols d'usuari** | Admin / Veterinari / Treballador | Mínim privilegi per rol i mòdul |
 
@@ -62,6 +64,22 @@ Suporta els tres models d'explotació principals:
 | **Treballador** | Registre diari: pesos, consums, estat de salut bàsic |
 
 > Detall complet de permisos: [`04_seguretat_i_rols.md`](./04_seguretat_i_rols.md)
+
+---
+
+## ⚠️ Decisió Crítica: Supabase com a Hosting de BD
+
+S'utilitza **Supabase únicament com a PostgreSQL gestionat** (hosting, backups, monitorització), **NO com a backend-as-a-service**.
+
+**Per què:**
+- L'API automàtica de Supabase (PostgREST) només exposa el schema `public` per defecte. El nostre model de **schema per tenant** (`tenant_00001`, `tenant_00002`...) no és compatible amb aquest flux sense configuració manual i no escalable per cada tenant nou.
+- L'autenticació pròpia (`public.users` amb `password_hash` i JWT generat pel nostre backend) requereix lògica de validació que **no pot viure al frontend**.
+
+**Conseqüència pràctica:**
+- El **backend és obligatori** (no és opcional ni un "nice to have").
+- El backend es connecta a Supabase mitjançant la **connection string PostgreSQL directa** (host, port, usuari, contrasenya — disponible al panell de Supabase), usant un client SQL estàndard (ex: `node-postgres`, `psycopg2`, `Npgsql`...), exactament com es connectaria a qualsevol PostgreSQL autogestionat.
+- El frontend **mai** es connecta directament a Supabase ni rep claus públiques de Supabase. Totes les peticions passen pel backend.
+- Les claus `anon` / `service_role` de Supabase i l'API REST/PostgREST **no s'utilitzen** en aquest projecte.
 
 ---
 
