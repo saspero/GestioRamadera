@@ -173,7 +173,7 @@ CREATE INDEX idx_animals_actiu ON animals(estat_actiu);
 CREATE INDEX idx_animals_raca  ON animals(raca_id);
 
 -- Índex de text complet per cerca ràpida per crotal (parcial, com fa el cercador)
-CREATE INDEX idx_animals_crotal_trgm ON animals USING gin (crotal_id gin_trgm_ops);
+CREATE INDEX idx_animals_crotal_trgm ON animals USING gin (crotal_id extensions.gin_trgm_ops);
 
 COMMENT ON COLUMN animals.estat_actiu IS
     'Mai s''esborra un animal. estat_actiu=FALSE indica baixa (venda o mort). L''historial es preserva sempre.';
