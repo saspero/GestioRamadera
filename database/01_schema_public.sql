@@ -11,8 +11,9 @@
 --   · fn_set_updated_at() → funció reutilitzada pels triggers
 --
 -- Prerequisit: extensió pg_trgm activada (ja fet ✅)
--- Següent pas: executar 02_schema_tenant_template.sql per crear
---              el primer tenant de prova.
+-- Següents passos:
+--   1. Executar 03_rls_public.sql per activar RLS a aquest schema.
+--   2. Executar 02_schema_tenant_template.sql per crear el primer tenant.
 -- ================================================================
 
 -- ================================================================

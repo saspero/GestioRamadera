@@ -431,19 +431,11 @@ COMMENT ON COLUMN presets_llet_pols.preu_repercutit_dia IS
 -- ================================================================
 
 -- ----------------------------------------------------------------
--- T1: updated_at automàtic per a totes les taules amb la columna
+-- T1: updated_at automàtic per a les taules del schema tenant
+-- (Els triggers de public.tenants i public.users ja es creen
+--  a 01_schema_public.sql — no es repeteixen aquí)
 -- ----------------------------------------------------------------
 
--- Schema públic
-CREATE TRIGGER trg_tenants_updated_at
-    BEFORE UPDATE ON public.tenants
-    FOR EACH ROW EXECUTE FUNCTION public.fn_set_updated_at();
-
-CREATE TRIGGER trg_users_updated_at
-    BEFORE UPDATE ON public.users
-    FOR EACH ROW EXECUTE FUNCTION public.fn_set_updated_at();
-
--- Schema tenant
 CREATE TRIGGER trg_sitges_updated_at
     BEFORE UPDATE ON sitges
     FOR EACH ROW EXECUTE FUNCTION public.fn_set_updated_at();
@@ -717,6 +709,47 @@ ON CONFLICT (nom_raca) DO NOTHING;
 
 COMMENT ON TABLE races_cataleg IS
     'Precarregat amb 17 races estàndard (es_global=TRUE). El tenant pot afegir races pròpies (es_global=FALSE).';
+
+
+-- ================================================================
+-- BLOC 7 — ROW LEVEL SECURITY (RLS)
+-- Bloqueja tot accés directe via API REST de Supabase (anon /
+-- authenticated). El rol de connexió directa del backend (postgres
+-- o rol propietari) NO queda afectat per RLS a PostgreSQL.
+-- ================================================================
+
+-- Infraestructura física
+ALTER TABLE ubicacions              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE zones_infraestructura   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE corts                   ENABLE ROW LEVEL SECURITY;
+
+-- Emmagatzematge d'aliments
+ALTER TABLE sitges                  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE magatzems_farratge      ENABLE ROW LEVEL SECURITY;
+
+-- Animals
+ALTER TABLE races_cataleg           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lots                    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE animals                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE historial_estat_salut   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE distribucio_animals     ENABLE ROW LEVEL SECURITY;
+
+-- Registres de producció
+ALTER TABLE registre_pes            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE registre_llet           ENABLE ROW LEVEL SECURITY;
+
+-- Logística d'alimentació
+ALTER TABLE consums_pinso_nau       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE moviments_farratge      ENABLE ROW LEVEL SECURITY;
+
+-- Mòdul sanitari
+ALTER TABLE medicaments             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tractaments             ENABLE ROW LEVEL SECURITY;
+
+-- Baixes i configuració
+ALTER TABLE baixes                  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE configuracio_general    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE presets_llet_pols       ENABLE ROW LEVEL SECURITY;
 
 
 -- ================================================================
