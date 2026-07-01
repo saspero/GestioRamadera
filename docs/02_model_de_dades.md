@@ -7,7 +7,19 @@
 
 ---
 
-## 0. ⚠️ Nota Crítica sobre l'Accés a la Base de Dades
+## 0. Ordre d'Execució dels Fitxers SQL
+
+| Ordre | Fitxer | Quan executar |
+|-------|--------|--------------|
+| 1 | `01_schema_public.sql` | Una sola vegada en crear la plataforma |
+| 2 | `03_rls_public.sql` | Una sola vegada, just després del punt 1 |
+| 3 | `02_schema_tenant_template.sql` | Una vegada per cada tenant nou (inclou RLS del tenant) |
+
+> El fitxer `02_schema_tenant_template.sql` ja incorpora el bloc RLS de les 19 taules del tenant al final — no cal executar cap fitxer RLS separat per als tenants.
+
+---
+
+## 0b. ⚠️ Nota Crítica sobre l'Accés a la Base de Dades
 
 Aquest projecte usa **Supabase únicament com a infraestructura de PostgreSQL** (hosting, backups automàtics, monitorització), **NO com a backend-as-a-service amb PostgREST**.
 
