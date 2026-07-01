@@ -9,13 +9,22 @@
 
 ## 0. Ordre d'Execució dels Fitxers SQL
 
+Tots els scripts SQL es troben a la carpeta `database/` del repositori.
+
 | Ordre | Fitxer | Quan executar |
 |-------|--------|--------------|
-| 1 | `01_schema_public.sql` | Una sola vegada en crear la plataforma |
-| 2 | `03_rls_public.sql` | Una sola vegada, just després del punt 1 |
-| 3 | `02_schema_tenant_template.sql` | Una vegada per cada tenant nou (inclou RLS del tenant) |
+| 1 | [`database/01_schema_public.sql`](../database/01_schema_public.sql) | Una sola vegada en crear la plataforma |
+| 2 | [`database/03_rls_public.sql`](../database/03_rls_public.sql) | Una sola vegada, just després del punt 1 |
+| 3 | [`database/02_schema_tenant_template.sql`](../database/02_schema_tenant_template.sql) | Una vegada per cada client nou (ja inclou RLS de les 19 taules) |
 
-> El fitxer `02_schema_tenant_template.sql` ja incorpora el bloc RLS de les 19 taules del tenant al final — no cal executar cap fitxer RLS separat per als tenants.
+**Fitxers d'utilitat** (no formen part del desplegament normal):
+
+| Fitxer | Ús |
+|--------|-----|
+| [`database/00_neteja_reintent.sql`](../database/00_neteja_reintent.sql) | Esborra un tenant per reintentar l'execució des de zero |
+| [`database/verificar_extensio.sql`](../database/verificar_extensio.sql) | Comprova a quin schema està instal·lada l'extensió `pg_trgm` |
+
+> **Fitxers eliminats:** `database_schema.sql` i `03_rls_tenant.sql` eren versions intermèdies del disseny, substituïdes pels fitxers anteriors. No han d'existir al repositori.
 
 ---
 
@@ -35,7 +44,7 @@ Aquest projecte usa **Supabase únicament com a infraestructura de PostgreSQL** 
 | Frontend | Mai es connecta directament a Supabase; totes les peticions passen pel backend propi |
 | Row Level Security (RLS) | Es manté com a **capa addicional de defensa** (secció 4 de `03_multitenancy.md`), però **no és l'única barrera** perquè el backend ja filtra per `search_path` abans d'executar cap query |
 
-> Vegeu també la nota equivalent a [`README.md`](./README.md).
+> Vegeu també la nota equivalent a [`README.md`](../README.md).
 
 ---
 
