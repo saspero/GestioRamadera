@@ -56,6 +56,7 @@ Suporta els tres models d'explotació principals:
 | [`docs/03_multitenancy.md`](./docs/03_multitenancy.md) | Estratègia schemas per tenant, RGPD, migracions |
 | [`docs/04_seguretat_i_rols.md`](./docs/04_seguretat_i_rols.md) | Rols, permisos per mòdul, autenticació JWT |
 | [`docs/05_backup_i_dr.md`](./docs/05_backup_i_dr.md) | Estratègia de còpies de seguretat i recuperació |
+| [`docs/11_arquitectura_nextjs.md`](./docs/11_arquitectura_nextjs.md) | Stack Next.js, estructura de carpetes, JWT, seguretat |
 
 ### Mòduls Funcionals
 
