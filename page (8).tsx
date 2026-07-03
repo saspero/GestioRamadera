@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Optimització per a ús mòbil a peu de granja */
+  button, [role="button"] {
+    @apply min-h-[44px] min-w-[44px]; /* Mida mínima tàctil recomanada */
+  }
+
+  input, select, textarea {
+    @apply text-base; /* Evita zoom automàtic a iOS (font-size >= 16px) */
+  }
+}
