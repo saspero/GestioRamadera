@@ -223,3 +223,25 @@ CREATE INDEX idx_audit_user ON public.audit_log(user_id, creat_el DESC);
 ```
 
 > **Retenció:** Els logs d'auditoria es conserven un mínim de **5 anys** per compliment legal (normativa sectorial agrícola i RGPD).
+
+### 6.1. Convenció de Valors del Camp `accio` per a Login
+
+| Valor de `accio` | Quan es registra | `user_id` |
+|-------------------|------------------|-----------|
+| `LOGIN` | Login amb èxit | Informat (usuari identificat) |
+| `LOGIN_FAILED` | Intent fallit (email no existent o contrasenya incorrecta) | `NULL` (no es pot identificar l'usuari amb certesa) |
+| `LOGIN_BLOCKED` | Intent rebutjat per rate limiting (massa intents) | `NULL` |
+| `LOGOUT` | Tancament de sessió | Informat |
+
+### 6.2. Relació amb `login_attempts` (Rate Limiting Tècnic)
+
+El rate limiting del login utilitza una taula separada, **`public.login_attempts`** (vegeu [`database/04_schema_login_attempts.sql`](../database/04_schema_login_attempts.sql)), amb un propòsit diferent del d'`audit_log`:
+
+| | `login_attempts` | `audit_log` |
+|---|---|---|
+| **Propòsit** | Mecanisme tècnic de rate limiting (finestra de 15 min) | Auditoria legal a llarg termini |
+| **Retenció** | 48 hores (purga automàtica) | 5 anys |
+| **Base legal** | Minimització de dades (Art. 5.1.c RGPD) — la finalitat tècnica no requereix conservació més llarga | Obligació de traçabilitat i seguretat |
+| **Conté dades personals de llarga durada?** | No (es purga) | Sí, amb política de retenció definida |
+
+Un mateix esdeveniment de login fallit genera **una fila a cada taula**: una a `login_attempts` (per decidir si bloquejar el següent intent) i una a `audit_log` amb `accio = 'LOGIN_FAILED'` (per a l'auditoria permanent). Són responsabilitats independents i no s'han de fusionar.

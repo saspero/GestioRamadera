@@ -162,6 +162,10 @@ JWT_SECRET="clau_secreta_molt_llarga_i_aleatoria_min_32_chars"
 JWT_ACCESS_EXPIRY="1h"
 JWT_REFRESH_EXPIRY="30d"
 
+# Cron Jobs — protegeix els endpoints de tasques programades (ex: purga login_attempts)
+# Generar amb: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+CRON_SECRET="clau_secreta_per_al_cron"
+
 # Entorn
 NODE_ENV="development"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
@@ -174,13 +178,15 @@ DATABASE_URL=""
 JWT_SECRET=""
 JWT_ACCESS_EXPIRY="1h"
 JWT_REFRESH_EXPIRY="30d"
+CRON_SECRET=""
 NODE_ENV="development"
 NEXT_PUBLIC_APP_URL=""
 ```
 
 > **Vercel:** Les variables d'entorn de producció es configuren a  
 > `Vercel Dashboard → Project → Settings → Environment Variables`  
-> Mai s'han d'escriure als fitxers de codi.
+> Mai s'han d'escriure als fitxers de codi.  
+> **Nota sobre `CRON_SECRET`:** Vercel injecta automàticament aquesta capçalera a les crides dels seus Cron Jobs si la variable d'entorn té exactament aquest nom — no cal configuració addicional a `vercel.json` per a l'autenticació.
 
 ---
 
@@ -364,6 +370,81 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ animals })
 }
 ```
+
+### 5.4. Rate Limiting del Login
+
+Per protegir el login contra atacs de força bruta, s'aplica un límit de **5 intents fallits en 15 minuts**, comprovat tant per **IP** com per **email** — el que es superi primer bloqueja l'intent.
+
+**Emmagatzematge:** taula `public.login_attempts` (vegeu [`database/04_schema_login_attempts.sql`](../database/04_schema_login_attempts.sql)). No s'usa memòria en procés perquè Vercel Serverless no garanteix persistència entre invocacions ni entre instàncies.
+
+```
+Petició de login
+      │
+      ▼
+[comprovarRateLimit(email, ip)]
+      │
+      ├─ Intents fallits per IP en 15 min >= 5?    → 429 Bloquejat (motiu: IP)
+      ├─ Intents fallits per email en 15 min >= 5? → 429 Bloquejat (motiu: EMAIL)
+      │
+      ▼ (si no bloquejat)
+[Validar credencials contra public.users]
+      │
+      ├─ Incorrecte → registrarIntent(exit=false) + audit_log('LOGIN_FAILED')
+      │               → 401
+      │
+      └─ Correcte   → registrarIntent(exit=true)  + audit_log('LOGIN')
+                      → Generar tokens + cookies
+                      → 200
+```
+
+**Separació de responsabilitats (important per RGPD):**
+
+| Taula | Propòsit | Retenció |
+|-------|---------|---------|
+| `public.login_attempts` | Mecanisme tècnic de rate limiting | **48 hores** (purga automàtica) |
+| `public.audit_log` | Auditoria legal (`LOGIN`, `LOGIN_FAILED`, `LOGIN_BLOCKED`) | **5 anys** (ja documentat a `04_seguretat_i_rols.md`) |
+
+Es tracta de dues responsabilitats independents: `login_attempts` no és un registre d'auditoria i no s'ha de conservar indefinidament (minimització de dades, Art. 5.1.c RGPD); `audit_log` sí és l'auditoria legal i ja té la seva política de retenció definida.
+
+**Purga automàtica:** un Vercel Cron Job (`vercel.json`) crida diàriament `/api/cron/purge-login-attempts`, protegit amb `CRON_SECRET`, que executa `public.fn_purgar_login_attempts()` per eliminar els registres de més de 48 hores.
+
+### 5.5. Refresh Automàtic del Token en Segon Pla
+
+Per evitar que l'usuari hagi de tornar a fer login cada hora (caducitat de l'access token), el sistema refresca el token **automàticament i en segon pla**, sense interrompre la feina de l'usuari a peu de granja.
+
+**Flux:**
+
+```
+1. El middleware verifica el JWT a cada petició.
+   Si al token li queden < 5 minuts abans de caducar,
+   afegeix la capçalera: x-token-refresh-suggested: true
+
+2. Al client, useAutoRefresh() intercepta totes les crides fetch().
+   Si detecta aquesta capçalera a una resposta:
+     → Crida POST /api/auth/refresh en segon pla
+     → No bloqueja ni interromp la petició original
+
+3. POST /api/auth/refresh:
+     · Verifica el refresh_token (cookie HttpOnly, 30 dies)
+     · Comprova que l'usuari i el tenant segueixen actius
+     · ROTACIÓ: emet un access_token I un refresh_token nous
+     · Desa els dos a cookies (substitueixen els anteriors)
+
+4. Si el refresh_token també ha caducat (usuari inactiu > 30 dies):
+     → 401 des de /api/auth/refresh
+     → useAutoRefresh() redirigeix a /login?motiu=sessio_expirada
+```
+
+**Per què rotació de refresh token:** cada vegada que es fa servir un refresh token per obtenir un access token nou, se'n genera un altre per substituir-lo. Això limita la finestra d'ús d'un refresh token robat: un cop usat legítimament pel propietari, qualsevol còpia robada anterior queda obsoleta en la següent renovació natural.
+
+**Fitxers implicats:**
+
+| Fitxer | Responsabilitat |
+|--------|-----------------|
+| `src/middleware.ts` | Detecta caducitat propera i afegeix la capçalera de senyal |
+| `src/hooks/useAutoRefresh.ts` | Intercepta `fetch()` al client i llança el refresh |
+| `src/app/api/auth/refresh/route.ts` | Verifica, rota i emet els nous tokens |
+| `src/app/(app)/layout.tsx` | Munta `useAutoRefresh()` a l'àrea protegida |
 
 ---
 

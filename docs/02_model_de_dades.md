@@ -15,7 +15,8 @@ Tots els scripts SQL es troben a la carpeta `database/` del repositori.
 |-------|--------|--------------|
 | 1 | [`database/01_schema_public.sql`](../database/01_schema_public.sql) | Una sola vegada en crear la plataforma |
 | 2 | [`database/03_rls_public.sql`](../database/03_rls_public.sql) | Una sola vegada, just després del punt 1 |
-| 3 | [`database/02_schema_tenant_template.sql`](../database/02_schema_tenant_template.sql) | Una vegada per cada client nou (ja inclou RLS de les 19 taules) |
+| 3 | [`database/04_schema_login_attempts.sql`](../database/04_schema_login_attempts.sql) | Una sola vegada — taula de rate limiting del login |
+| 4 | [`database/02_schema_tenant_template.sql`](../database/02_schema_tenant_template.sql) | Una vegada per cada client nou (ja inclou RLS de les 19 taules) |
 
 **Fitxers d'utilitat** (no formen part del desplegament normal):
 
