@@ -37,6 +37,17 @@ COMMENT ON COLUMN public.login_attempts.email IS
     'Email tal com es va introduir a l''intent (encara que no existeixi com a usuari).';
 
 -- ----------------------------------------------------------------
+-- Row Level Security
+-- Bloqueja tot accés directe via API REST de Supabase (anon /
+-- authenticated). El rol de connexió directa del backend (postgres
+-- o rol propietari) NO queda afectat per RLS a PostgreSQL.
+-- Mateix criteri aplicat a public.tenants, public.users i
+-- public.audit_log (vegeu database/03_rls_public.sql).
+-- ----------------------------------------------------------------
+
+ALTER TABLE public.login_attempts ENABLE ROW LEVEL SECURITY;
+
+-- ----------------------------------------------------------------
 -- Funció de purga: elimina intents de més de 48 hores
 -- ----------------------------------------------------------------
 
@@ -76,4 +87,19 @@ COMMENT ON FUNCTION public.fn_purgar_login_attempts() IS
 --   );
 --
 -- Aquest projecte usa l'OPCIÓ A — veure src/app/api/cron/purge-login-attempts/route.ts
+-- ================================================================
+
+-- ================================================================
+-- Verificació: confirma que RLS està actiu
+-- ================================================================
+SELECT
+    schemaname  AS schema,
+    tablename   AS taula,
+    rowsecurity AS rls_actiu
+FROM pg_tables
+WHERE schemaname = 'public'
+  AND tablename = 'login_attempts';
+
+-- ================================================================
+-- RESULTAT ESPERAT: rls_actiu = TRUE
 -- ================================================================
