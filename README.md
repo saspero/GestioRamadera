@@ -74,6 +74,7 @@ Suporta els tres models d'explotació principals:
 |--------|--------------|
 | [`database/01_schema_public.sql`](./database/01_schema_public.sql) | ✅ Un sol cop en crear la plataforma |
 | [`database/03_rls_public.sql`](./database/03_rls_public.sql) | ✅ Un sol cop, just després de l'anterior |
+| [`database/04_schema_login_attempts.sql`](./database/04_schema_login_attempts.sql) | ✅ Un sol cop (rate limiting del login) |
 | [`database/02_schema_tenant_template.sql`](./database/02_schema_tenant_template.sql) | 🔁 Un cop per cada client nou (inclou RLS del tenant) |
 | [`database/00_neteja_reintent.sql`](./database/00_neteja_reintent.sql) | 🛠️ Utilitat: neteja un tenant per reintentar l'execució |
 | [`database/verificar_extensio.sql`](./database/verificar_extensio.sql) | 🛠️ Utilitat: comprova on és instal·lada `pg_trgm` |
