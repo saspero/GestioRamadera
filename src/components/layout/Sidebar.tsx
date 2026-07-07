@@ -1,22 +1,132 @@
 'use client'
 
-// TODO: Implementar Sidebar amb navegació lateral
-// Veure: docs/06_modul_navegacio.md — Estructura de Navegació
-// Mòduls: Dashboard, Animals, Logística, Sanitari, Arxiu, Configuració
-// Rols: cada rol veu únicament les seccions que li corresponen
-
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
+import { LogOut, X } from 'lucide-react'
+import { getMenuForRol } from '@/lib/navigation/menuItems'
 import type { Rol } from '@/types/db'
 
+/**
+ * Propietats del component Sidebar.
+ */
 type SidebarProps = {
+  /** Rol de l'usuari autenticat, determina quines seccions es mostren */
   rol: Rol
+  /** Nom complet de l'usuari, mostrat al peu del Sidebar */
+  nom: string
+  /** Indica si el Sidebar està obert en vista mòbil (overlay) */
+  obertMobil: boolean
+  /** Callback per tancar el Sidebar en vista mòbil (p.ex. en clicar l'overlay) */
+  onTancarMobil: () => void
 }
 
-export function Sidebar({ rol }: SidebarProps) {
+/**
+ * Sidebar de navegació principal de l'aplicació.
+ *
+ * Comportament responsive:
+ * - Escriptori (md i superior): fix, sempre visible, empeny el contingut.
+ * - Mòbil/tauleta (< md): amagat per defecte, es mostra com a overlay
+ *   complet sobre el contingut quan `obertMobil` és true.
+ *
+ * @param props - Vegeu {@link SidebarProps}
+ * @returns Element de navegació lateral
+ *
+ * @remarks Control d'accés (UX, no de seguretat): els elements de
+ * navegació es filtren cridant getMenuForRol(rol), que reflecteix la
+ * matriu de permisos de docs/04_seguretat_i_rols.md. La protecció
+ * real de cada ruta la fa el middleware i les API Routes — aquest
+ * component només evita mostrar enllaços que l'usuari no hauria de veure.
+ */
+export function Sidebar({ rol, nom, obertMobil, onTancarMobil }: SidebarProps) {
+  const pathname = usePathname()
+  const router = useRouter()
+  const menuItems = getMenuForRol(rol)
+
+  /**
+   * Tanca la sessió cridant l'endpoint de logout i redirigeix al login.
+   *
+   * @returns Promise que es resol un cop completada la redirecció
+   */
+  async function handleLogout(): Promise<void> {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/login')
+    router.refresh()
+  }
+
   return (
-    <aside className="w-64 min-h-screen bg-gray-900 text-white p-4">
-      <div className="text-lg font-bold mb-6">Gestió Ramadera</div>
-      {/* TODO: Implementar items de navegació filtrats per rol */}
-      <p className="text-gray-400 text-sm">Sidebar pendent — rol: {rol}</p>
-    </aside>
+    <>
+      {/* Overlay fosc darrere del Sidebar en mòbil, tanca en clicar fora */}
+      {obertMobil && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={onTancarMobil}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`
+          fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 text-white
+          flex flex-col
+          transform transition-transform duration-200 ease-in-out
+          md:translate-x-0 md:static md:z-auto
+          ${obertMobil ? 'translate-x-0' : '-translate-x-full'}
+        `}
+      >
+        {/* Capçalera amb nom de l'app i botó de tancar (només mòbil) */}
+        <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800">
+          <span className="text-lg font-bold">Gestió Ramadera</span>
+          <button
+            onClick={onTancarMobil}
+            className="md:hidden p-2 -mr-2 rounded-lg hover:bg-gray-800"
+            aria-label="Tancar menú"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Navegació principal, filtrada per rol */}
+        <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
+          {menuItems.map((item) => {
+            const actiu = pathname.startsWith(item.href)
+            const Icon = item.icon
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onTancarMobil}
+                className={`
+                  flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+                  transition-colors min-h-[44px]
+                  ${
+                    actiu
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                  }
+                `}
+              >
+                <Icon size={20} aria-hidden="true" />
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Peu: nom + rol de l'usuari i botó de tancar sessió */}
+        <div className="border-t border-gray-800 px-4 py-4">
+          <p className="text-sm font-medium text-white truncate">{nom}</p>
+          <p className="text-xs text-gray-400 mb-3">{rol}</p>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm
+                       text-gray-300 hover:bg-gray-800 hover:text-white transition-colors
+                       min-h-[44px]"
+          >
+            <LogOut size={18} aria-hidden="true" />
+            Tancar sessió
+          </button>
+        </div>
+      </aside>
+    </>
   )
 }

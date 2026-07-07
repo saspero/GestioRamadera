@@ -16,7 +16,8 @@
     "jose": "^5.0.0",
     "bcryptjs": "^2.4.3",
     "pg": "^8.11.0",
-    "zod": "^3.22.0"
+    "zod": "^3.22.0",
+    "lucide-react": "^0.383.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

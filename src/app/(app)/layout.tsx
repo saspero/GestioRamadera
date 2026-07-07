@@ -1,26 +1,56 @@
-'use client'
+import { redirect } from 'next/navigation'
+import { getSession } from '@/lib/auth/session'
+import { queryPublic } from '@/lib/db/client'
+import { AppShell } from '@/components/layout/AppShell'
+import type { Rol } from '@/types/db'
 
-import { useAutoRefresh } from '@/hooks/useAutoRefresh'
+type UsuariNom = { nom: string }
 
-// Layout per a totes les rutes protegides (amb sidebar).
-// El middleware ja ha verificat que l'usuari té sessió vàlida
-// abans d'arribar aquí. Aquest layout afegeix la navegació lateral
-// i activa el refresh automàtic del JWT en segon pla.
-
-// TODO: Implementar Sidebar i Header (rebre el rol via server component pare)
-export default function AppLayout({
+/**
+ * Layout arrel de totes les rutes protegides (grup de rutes `(app)`).
+ *
+ * Aquest layout és un Server Component: llegeix la sessió directament
+ * de les cookies (sense passar per fetch), en resol el nom de l'usuari
+ * a la base de dades, i delega tota la interactivitat (Sidebar
+ * collapsable, refresc automàtic) a AppShell, que és un Client Component.
+ *
+ * @param props.children - Contingut de la pàgina concreta que es renderitza
+ * @returns Layout amb Sidebar + Header + contingut, o redirecció a /login
+ *
+ * @remarks Control d'accés: el middleware (src/middleware.ts) ja bloqueja
+ * l'accés sense JWT vàlid abans que aquest layout s'executi. Aquesta
+ * comprovació getSession() és una segona capa de defensa pròpia del
+ * Server Component, per si el layout es renderitzés en un context on
+ * el middleware no s'hagués aplicat (per exemple, en tests o rendering
+ * intern de Next.js).
+ *
+ * @remarks Multitenant: NO es consulta cap dada del tenant aquí, només
+ * el nom de l'usuari al schema public (queryPublic). Les dades pròpies
+ * de cada tenant es carreguen dins de cada pàgina/API Route amb
+ * queryTenant() i el search_path corresponent.
+ */
+export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  useAutoRefresh()
+  const session = await getSession()
+
+  if (!session) {
+    redirect('/login')
+  }
+
+  const rows = await queryPublic<UsuariNom>(
+    `SELECT nom FROM public.users WHERE id = $1`,
+    [Number(session.sub)]
+  )
+
+  const nom = rows[0]?.nom ?? 'Usuari'
+  const rol = session.rol as Rol
 
   return (
-    <div className="min-h-screen flex">
-      {/* TODO: <Sidebar rol={rol} /> */}
-      <main className="flex-1 p-4 md:p-6">
-        {children}
-      </main>
-    </div>
+    <AppShell rol={rol} nom={nom}>
+      {children}
+    </AppShell>
   )
 }

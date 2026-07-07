@@ -559,7 +559,8 @@ export default nextConfig
     "jose": "^5.0.0",
     "bcryptjs": "^2.4.3",
     "pg": "^8.11.0",
-    "zod": "^3.22.0"
+    "zod": "^3.22.0",
+    "lucide-react": "^0.383.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
@@ -576,7 +577,51 @@ export default nextConfig
 
 ---
 
-## 10. Primers Passos per Iniciar el Projecte
+## 11. Sidebar i Navegació per Rol
+
+### 11.1. Arquitectura de Components
+
+```
+src/app/(app)/layout.tsx          ← Server Component: llegeix sessió (JWT),
+                                      resol nom d'usuari, redirigeix si no n'hi ha
+        │
+        ▼
+src/components/layout/AppShell.tsx ← Client Component: gestiona estat
+                                      obert/tancat del Sidebar en mòbil,
+                                      activa useAutoRefresh()
+        │
+        ├── src/components/layout/Sidebar.tsx  ← Navegació + peu (nom/rol/logout)
+        └── src/components/layout/Header.tsx   ← Només mòbil: botó hamburguesa
+```
+
+### 11.2. Comportament Responsive
+
+| Breakpoint | Comportament |
+|-----------|-------------|
+| `< md` (mòbil/tauleta petita) | Sidebar amagat per defecte, s'obre com a overlay complet sobre el contingut en prémer el botó hamburguesa del Header |
+| `>= md` (escriptori/tauleta gran) | Sidebar fix, sempre visible, el contingut s'ajusta al costat. El Header mòbil no es renderitza |
+
+### 11.3. Navegació Filtrada per Rol
+
+La visibilitat de cada secció es defineix a **`src/lib/navigation/menuItems.ts`**, que actua com a font de veritat única per a l'estructura del menú. Cada element declara `rolsPermesos: Rol[]`, i `getMenuForRol(rol)` retorna només els elements visibles per a l'usuari actual.
+
+**Important:** aquest filtre és únicament visual/UX. La protecció real de cada ruta la fa el middleware (`src/middleware.ts`) i la comprovació de rol a cada API Route (`src/lib/auth/roles.ts`, documentat a la secció 6). Un usuari que navegui manualment a una URL no autoritzada per al seu rol continua sent bloquejat pel backend, independentment del que mostri el Sidebar.
+
+Matriu de visibilitat actual (ha de coincidir amb `docs/04_seguretat_i_rols.md`, secció 2.2):
+
+| Secció | Admin | Veterinari | Treballador |
+|--------|-------|-----------|------------|
+| Dashboard | ✅ | ✅ | ✅ |
+| Animals | ✅ | ✅ | ✅ |
+| Lots i Corts | ✅ | ✅ | ✅ |
+| Sanitari | ✅ | ✅ | ❌ |
+| Logística | ✅ | ❌ | ✅ |
+| Arxiu | ✅ | ✅ | ❌ |
+| Configuració | ✅ | ❌ | ❌ |
+
+---
+
+## 12. Primers Passos per Iniciar el Projecte
 
 ```bash
 # 1. Crear el projecte Next.js amb TypeScript i Tailwind
