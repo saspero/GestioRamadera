@@ -28,12 +28,23 @@ type AppShellProps = {
  * També activa el refresc automàtic del JWT en segon pla mitjançant
  * useAutoRefresh() (veure docs/11_arquitectura_nextjs.md, secció 5.5).
  *
- * @param props - Vegeu {@link AppShellProps}
+ * @param props - Propietats del component
+ * @param props.rol - Rol de l'usuari autenticat (Admin, Veterinari o Treballador)
+ * @param props.nom - Nom complet de l'usuari autenticat
+ * @param props.children - Contingut de la pàgina concreta a renderitzar dins l'àrea principal
  * @returns Estructura completa amb Sidebar + Header + contingut
  *
- * @remarks Multitenant: aquest component no toca dades de cap tenant
+ * @remarks Control d'accés per rol: aquest component no aplica cap
+ * filtre de rol directament — es limita a propagar `rol` al Sidebar,
+ * que és qui decideix quines seccions de navegació es mostren
+ * (veure src/lib/navigation/menuItems.ts). La protecció real de les
+ * rutes i dades és responsabilitat del middleware i de cada API Route.
+ *
+ * @remarks Multitenancy: aquest component no toca dades de cap tenant
  * directament; només rep `rol` i `nom`, ja resolts pel Server Component
- * pare (layout.tsx) a partir de la sessió JWT. Cap dada de BD es llegeix aquí.
+ * pare (src/app/(app)/layout.tsx) a partir de la sessió JWT. Cap dada
+ * de BD es llegeix aquí — les pàgines filles (children) són les
+ * responsables de cridar queryTenant() amb el seu propi search_path.
  */
 export function AppShell({ rol, nom, children }: AppShellProps) {
   const [sidebarObert, setSidebarObert] = useState(false)

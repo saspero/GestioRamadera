@@ -28,14 +28,25 @@ type SidebarProps = {
  * - Mòbil/tauleta (< md): amagat per defecte, es mostra com a overlay
  *   complet sobre el contingut quan `obertMobil` és true.
  *
- * @param props - Vegeu {@link SidebarProps}
- * @returns Element de navegació lateral
+ * @param props - Propietats del component
+ * @param props.rol - Rol de l'usuari autenticat (Admin, Veterinari o Treballador)
+ * @param props.nom - Nom complet de l'usuari, mostrat al peu del Sidebar
+ * @param props.obertMobil - Indica si el Sidebar està obert en vista mòbil (overlay)
+ * @param props.onTancarMobil - Callback invocat per tancar el Sidebar en mòbil
+ * @returns Element de navegació lateral, responsive, filtrat per rol
  *
- * @remarks Control d'accés (UX, no de seguretat): els elements de
+ * @remarks Control d'accés per rol (UX, no de seguretat): els elements de
  * navegació es filtren cridant getMenuForRol(rol), que reflecteix la
  * matriu de permisos de docs/04_seguretat_i_rols.md. La protecció
  * real de cada ruta la fa el middleware i les API Routes — aquest
  * component només evita mostrar enllaços que l'usuari no hauria de veure.
+ * Un Treballador, per exemple, mai veurà "Sanitari" ni "Configuració"
+ * al menú, tot i que la restricció real ve del backend.
+ *
+ * @remarks Multitenancy: aquest component no fa cap consulta a la BD ni
+ * rep dades de cap tenant concret. `rol` i `nom` ja arriben resolts des
+ * del Server Component pare (src/app/(app)/layout.tsx), que els obté
+ * del JWT i de public.users respectivament.
  */
 export function Sidebar({ rol, nom, obertMobil, onTancarMobil }: SidebarProps) {
   const pathname = usePathname()
@@ -46,6 +57,11 @@ export function Sidebar({ rol, nom, obertMobil, onTancarMobil }: SidebarProps) {
    * Tanca la sessió cridant l'endpoint de logout i redirigeix al login.
    *
    * @returns Promise que es resol un cop completada la redirecció
+   *
+   * @remarks Control d'accés: disponible per a qualsevol rol autenticat
+   * (Admin, Veterinari, Treballador) — tancar sessió no requereix cap
+   * permís especial. Crida POST /api/auth/logout, que esborra les
+   * cookies HttpOnly access_token i refresh_token al servidor.
    */
   async function handleLogout(): Promise<void> {
     await fetch('/api/auth/logout', { method: 'POST' })

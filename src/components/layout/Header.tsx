@@ -17,8 +17,18 @@ type HeaderProps = {
  * A escriptori aquest component no es renderitza (el Sidebar ja
  * és fix i sempre visible).
  *
- * @param props - Vegeu {@link HeaderProps}
+ * @param props - Propietats del component
+ * @param props.onObrirMenu - Callback invocat en prémer el botó hamburguesa
  * @returns Capçalera fixa a la part superior, només visible en mòbil
+ *
+ * @remarks Control d'accés: aquest component és purament estructural
+ * i no depèn del rol de l'usuari — es mostra igual per a Admin,
+ * Veterinari i Treballador. No conté cap element de navegació ni
+ * cap dada; només delega l'obertura del Sidebar (que sí és filtrat
+ * per rol) mitjançant el callback `onObrirMenu`.
+ *
+ * @remarks Multitenancy: no fa cap consulta a la BD ni rep dades
+ * de cap tenant.
  */
 export function Header({ onObrirMenu }: HeaderProps) {
   return (
