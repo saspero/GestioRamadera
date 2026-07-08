@@ -560,7 +560,7 @@ export default nextConfig
     "bcryptjs": "^2.4.3",
     "pg": "^8.11.0",
     "zod": "^3.22.0",
-    "lucide-react": "^0.383.0"
+    "lucide-react": "^0.469.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
