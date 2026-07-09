@@ -32,7 +32,9 @@ Suporta els tres models d'explotació principals:
 │   ├── 07_modul_arxiu_historic.md
 │   ├── 08_modul_llistat_actius.md
 │   ├── 09_modul_logistica_farratges.md
-│   └── 10_modul_vedells_mamons.md
+│   ├── 10_modul_vedells_mamons.md
+│   ├── 11_arquitectura_nextjs.md
+│   └── 12_modul_dashboard.md
 ├── database/                        ← Scripts SQL de la base de dades
 │   ├── 01_schema_public.sql         ← Executar UN COP en crear la plataforma
 │   ├── 02_schema_tenant_template.sql← Executar per CADA CLIENT NOU (inclou RLS)
@@ -67,6 +69,7 @@ Suporta els tres models d'explotació principals:
 | [`docs/08_modul_llistat_actius.md`](./docs/08_modul_llistat_actius.md) | Graella diària, gestió de lots, altes massives |
 | [`docs/09_modul_logistica_farratges.md`](./docs/09_modul_logistica_farratges.md) | Consums, alertes d'estoc, estats de magatzem |
 | [`docs/10_modul_vedells_mamons.md`](./docs/10_modul_vedells_mamons.md) | Presets de llet en pols, imputació de costos |
+| [`docs/12_modul_dashboard.md`](./docs/12_modul_dashboard.md) | Blocs de resum, permisos per rol, repartiment de consum per lot |
 
 ### Scripts de Base de Dades
 
