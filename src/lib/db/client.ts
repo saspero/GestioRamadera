@@ -24,6 +24,13 @@ export type TenantContext = {
  * Executa una query dins del schema del tenant correcte.
  * Usa SET LOCAL search_path per garantir l'aïllament per transacció.
  * Cap dada d'un tenant pot ser accessible des d'un altre.
+ *
+ * @remarks IMPORTANT: SET LOCAL només té efecte dins d'una transacció
+ * explícita (BEGIN...COMMIT). Sense aquest embolcall, cada
+ * client.query() de node-postgres s'executa en auto-commit implícit,
+ * i el search_path quedaria desfet abans d'arribar a la query real
+ * — causant errors "relation does not exist" perquè PostgreSQL
+ * buscaria les taules al search_path per defecte, no al del tenant.
  */
 export async function queryTenant<T extends QueryResultRow = Record<string, unknown>>(
   ctx: TenantContext,
@@ -32,12 +39,19 @@ export async function queryTenant<T extends QueryResultRow = Record<string, unkn
 ): Promise<T[]> {
   const client: PoolClient = await pool.connect()
   try {
-    // SET LOCAL afecta només aquesta transacció, no la connexió del pool
-    await client.query(
-      `SET LOCAL search_path TO ${client.escapeIdentifier(ctx.tenantSchema)}, public`
-    )
-    const result = await client.query<T>(sql, params)
-    return result.rows
+    await client.query('BEGIN')
+    try {
+      // SET LOCAL afecta només aquesta transacció, no la connexió del pool
+      await client.query(
+        `SET LOCAL search_path TO ${client.escapeIdentifier(ctx.tenantSchema)}, public`
+      )
+      const result = await client.query<T>(sql, params)
+      await client.query('COMMIT')
+      return result.rows
+    } catch (err) {
+      await client.query('ROLLBACK')
+      throw err
+    }
   } finally {
     client.release()
   }
