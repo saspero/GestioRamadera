@@ -1,4 +1,4 @@
-import { Pool, PoolClient } from 'pg'
+import { Pool, PoolClient, QueryResultRow } from 'pg'
 
 if (!process.env.DATABASE_URL) {
   throw new Error('Variable d\'entorn DATABASE_URL no definida')
@@ -25,7 +25,7 @@ export type TenantContext = {
  * Usa SET LOCAL search_path per garantir l'aïllament per transacció.
  * Cap dada d'un tenant pot ser accessible des d'un altre.
  */
-export async function queryTenant<T = Record<string, unknown>>(
+export async function queryTenant<T extends QueryResultRow = Record<string, unknown>>(
   ctx: TenantContext,
   sql: string,
   params: unknown[] = []
@@ -47,7 +47,7 @@ export async function queryTenant<T = Record<string, unknown>>(
  * Executa una query al schema públic (tenants, users, audit_log).
  * Usar únicament per a operacions globals (login, aprovisionament).
  */
-export async function queryPublic<T = Record<string, unknown>>(
+export async function queryPublic<T extends QueryResultRow = Record<string, unknown>>(
   sql: string,
   params: unknown[] = []
 ): Promise<T[]> {
@@ -75,16 +75,3 @@ export async function auditLog(params: {
 }): Promise<void> {
   await queryPublic(
     `INSERT INTO public.audit_log
-      (tenant_id, user_id, accio, taula_afectada, registre_id, dades_json, ip_origen)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [
-      params.tenantId,
-      params.userId,
-      params.accio,
-      params.taulaAfectada ?? null,
-      params.registreId ?? null,
-      params.dadesJson ? JSON.stringify(params.dadesJson) : null,
-      params.ipOrigen ?? null,
-    ]
-  )
-}
