@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { useAutoRefresh } from '@/hooks/useAutoRefresh'
+import { SessioProvider } from '@/lib/session/SessioContext'
 import type { Rol } from '@/types/db'
 
 /**
@@ -45,6 +46,9 @@ type AppShellProps = {
  * pare (src/app/(app)/layout.tsx) a partir de la sessió JWT. Cap dada
  * de BD es llegeix aquí — les pàgines filles (children) són les
  * responsables de cridar queryTenant() amb el seu propi search_path.
+ * @remarks Exposa `rol` i `nom` a totes les pàgines filles via
+ * SessioProvider (src/lib/session/SessioContext.tsx), evitant que
+ * cada pàgina hagi de fer una petició pròpia només per conèixer el rol.
  */
 export function AppShell({ rol, nom, children }: AppShellProps) {
   const [sidebarObert, setSidebarObert] = useState(false)
@@ -63,7 +67,7 @@ export function AppShell({ rol, nom, children }: AppShellProps) {
       <div className="flex-1 flex flex-col min-w-0">
         <Header onObrirMenu={() => setSidebarObert(true)} />
         <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
-          {children}
+          <SessioProvider value={{ rol, nom }}>{children}</SessioProvider>
         </main>
       </div>
     </div>

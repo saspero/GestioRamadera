@@ -40,13 +40,33 @@ export type Animal = {
   actualitzatEl: Date
 }
 
-export type AnimalActiu = Animal & {
-  nomRaca:     string | null
-  nomLot:      string | null
-  codiCort:    string | null
-  nomZona:     string | null
-  dataEntrada: Date | null
-  edatDies:    number | null
+/**
+ * Animal actiu tal com el retorna v_animals_actius (join amb raça,
+ * lot, cort i zona), més l'indicador de bloqueig comercial.
+ *
+ * @remarks Definit de manera independent de `Animal` (no com a
+ * extensió) perquè les queries que l'alimenten (getAnimalsActius,
+ * cercarPerCrotal a src/lib/db/queries/animals.ts) no seleccionen
+ * estatActiu, creatEl ni actualitzatEl — per definició, tot animal
+ * present a v_animals_actius ja té estat_actiu = TRUE. Prometre
+ * aquests camps aquí donaria una falsa sensació de tipatge complet
+ * quan en realitat mai arriben del backend.
+ */
+export type AnimalActiu = {
+  id:            number
+  crotalId:      string
+  dib:           string | null
+  nomRaca:       string | null
+  dataNaixement: Date | null
+  estatSalut:    EstatSalut
+  sexe:          Sexe | null
+  nomLot:        string | null
+  codiCort:      string | null
+  nomZona:       string | null
+  dataEntrada:   Date | null
+  edatDies:      number | null
+  /** True si l'animal té un tractament actiu amb bloqueig comercial vigent. */
+  enSupressio:   boolean
 }
 
 export type Medicament = {

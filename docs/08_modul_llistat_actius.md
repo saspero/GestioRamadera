@@ -1,8 +1,23 @@
 # 08 — Mòdul de Llistat d'Animals Actius i Altes Massives
 
-> **Versió:** 1.0.0  
-> **Última actualització:** Juny de 2026  
+> **Versió:** 1.1.0  
+> **Última actualització:** Juliol de 2026  
 > **Basat en:** Disseny_Webapp_Gestió_Ramadera_Bovina_-_Pantalla_Llistat_Actius_i_Altes_Massives_V1.docx
+
+---
+
+## 0. Estat d'Implementació
+
+| Funcionalitat | Estat | Detall |
+|---|---|---|
+| Llistat d'animals actius (secció 2.2 vista global) | ✅ Implementat | `GET /api/animals`, taula amb raça/lot/cort/estat de salut/edat |
+| Cercador ràpid per crotal (secció 2.1) | ✅ Implementat | Debounce 250ms, `GET /api/animals?cerca=` |
+| Indicador de bloqueig comercial (secció 2.3) | ✅ Implementat | Icona sense xifra de dies (detall exacte pendent de la fitxa individual) |
+| Altes massives per CSV (secció 4) | ✅ Implementat | Només CSV en aquesta versió; Excel (.xlsx) pendent |
+| Alta individual (secció 5) | ⚠️ Backend fet, sense UI | `crearAnimalIndividual()` a queries/animals.ts existeix; falta el formulari |
+| Selector de vista Per Cort / Per Lot (secció 2.2) | ❌ Pendent | Ara mateix només "Tots els actius" |
+| Edició ràpida de mètriques a la graella (secció 2.3-2.4) | ❌ Pendent | Pes/llet amb Intro/Tab, offline |
+| Selecció múltiple i accions massives (secció 3) | ❌ Pendent | Canviar lot, dividir lot, assignar cort |
 
 ---
 
@@ -194,3 +209,50 @@ A més de la càrrega massiva, l'Admin pot donar d'alta un animal individual des
 | `lots` | Lectura per assignació; INSERT si es crea lot nou |
 | `corts` | Lectura per assignació de cort |
 | `public.audit_log` | Registre d'altes individuals i massives |
+
+---
+
+## 7. Detall Tècnic de la Implementació Actual
+
+### 7.1. Endpoints API
+
+| Endpoint | Mètode | Rol | Descripció |
+|---|---|---|---|
+| `/api/animals` | GET | Tots | Llistat d'actius; `?cerca=` per filtrar per crotal |
+| `/api/animals/catalegs` | GET | Admin | Races, lots i corts per als desplegables |
+| `/api/animals/comprovar-duplicats` | POST | Admin | Comprova crotal_id existents (pas de previsualització) |
+| `/api/animals/bulk-import` | POST | Admin | Confirma la importació; revalida duplicats abans d'inserir |
+
+### 7.2. Format del CSV (implementat)
+
+Capçalera exacta esperada (en minúscules, `transformHeader` normalitza automàticament):
+```
+crotal_id,dib,data_naixement,sexe
+```
+
+Parsejat amb **PapaParse** al client (`src/hooks/useAltaMassiva.ts`). La raça, el lot i la cort **no** van al fitxer — s'assignen en un pas posterior comú a tot el bloc, tal com especifica la secció 4.2.
+
+### 7.3. Decisió: repartiment de responsabilitats en la detecció de duplicats
+
+- **Duplicats interns** (mateix crotal repetit al fitxer): detectats íntegrament al client, bloquegen la importació (fila vermella).
+- **Duplicats contra la BD**: comprovats en dues passades — primer al pas de previsualització (`POST /api/animals/comprovar-duplicats`, informatiu, permet ometre la fila), i **revalidats de nou** a `POST /api/animals/bulk-import` just abans d'inserir, per si dos Admins importessin el mateix crotal simultàniament entre la previsualització i la confirmació (retorna `409` si en troba).
+
+### 7.4. Transacció d'importació
+
+`importarAnimalsMassiu()` (`src/lib/db/queries/animals.ts`) resol el lot de destí (existent o el crea) i després insereix tots els animals + les seves distribucions inicials amb `UNNEST` sobre arrays de paràmetres, dins la transacció `BEGIN`/`COMMIT` que ja aplica `queryTenant()` — si qualsevol INSERT falla, tot el bloc es desfà.
+
+### 7.5. Propagació del rol a les pàgines client
+
+Per evitar que cada pàgina hagi de fer una petició pròpia només per saber el rol de l'usuari, es va introduir `SessioProvider`/`useSessio()` (`src/lib/session/SessioContext.tsx`), muntat una única vegada a `AppShell` amb el `rol` i `nom` ja resolts pel Server Component `layout.tsx`. Aquest valor és només a efectes d'UI (mostrar/amagar el botó d'alta massiva); la protecció real és sempre a l'endpoint.
+
+### 7.6. Fitxers del Projecte
+
+| Fitxer | Responsabilitat |
+|---|---|
+| `src/lib/validators/animals.ts` | Schemas Zod: fila de CSV, assignació base, payload complet |
+| `src/lib/db/queries/animals.ts` | Totes les queries: llistat, cerca, catàlegs, alta individual i massiva |
+| `src/app/api/animals/*/route.ts` | Els 4 endpoints (llistat, catàlegs, duplicats, bulk-import) |
+| `src/hooks/useAltaMassiva.ts` | Orquestra tot el flux client: parsing, validació, confirmació |
+| `src/components/animals/TaulaAnimals.tsx` | Taula del llistat amb cercador |
+| `src/components/animals/ModalAltaMassiva.tsx` | Modal dels 3 passos de l'alta massiva |
+| `src/lib/session/SessioContext.tsx` | Context per exposar rol/nom a les pàgines filles |
