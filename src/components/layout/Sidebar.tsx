@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LogOut, X } from 'lucide-react'
+import { LogOut, X, Icon, type IconNode } from 'lucide-react'
 import { getMenuForRol } from '@/lib/navigation/menuItems'
 import type { Rol } from '@/types/db'
 
@@ -105,7 +105,11 @@ export function Sidebar({ rol, nom, obertMobil, onTancarMobil }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
           {menuItems.map((item) => {
             const actiu = pathname.startsWith(item.href)
-            const Icon = item.icon
+            // item.icon pot ser un component LucideIcon (funció) o un
+            // IconNode d'@lucide/lab (array de dades SVG). Cada tipus
+            // es renderitza amb un mètode diferent.
+            const esIconNode = Array.isArray(item.icon)
+            const IconComponent = esIconNode ? null : item.icon
             return (
               <Link
                 key={item.href}
@@ -121,7 +125,11 @@ export function Sidebar({ rol, nom, obertMobil, onTancarMobil }: SidebarProps) {
                   }
                 `}
               >
-                <Icon size={20} aria-hidden="true" />
+                {esIconNode ? (
+                  <Icon iconNode={item.icon as IconNode} size={20} aria-hidden="true" />
+                ) : (
+                  IconComponent && <IconComponent size={20} aria-hidden="true" />
+                )}
                 {item.label}
               </Link>
             )

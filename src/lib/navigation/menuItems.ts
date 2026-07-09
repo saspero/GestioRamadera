@@ -1,7 +1,6 @@
 import type { Rol } from '@/types/db'
 import {
   LayoutDashboard,
-  Beef,
   Layers,
   Stethoscope,
   Truck,
@@ -9,6 +8,8 @@ import {
   Settings,
   type LucideIcon,
 } from 'lucide-react'
+import { cowHead } from '@lucide/lab'
+import type { IconNode } from 'lucide-react'
 
 /**
  * Element individual del menú de navegació del Sidebar.
@@ -18,8 +19,14 @@ export type MenuItem = {
   label: string
   /** Ruta de destí (App Router de Next.js) */
   href: string
-  /** Icona de lucide-react associada a la secció */
-  icon: LucideIcon
+  /**
+   * Icona associada a la secció. Pot ser un component estàndard de
+   * lucide-react (LucideIcon) o un IconNode del paquet @lucide/lab
+   * (icones experimentals com cowHead, que encara no tenen component
+   * dedicat). El Sidebar distingeix quin tipus és per renderitzar-lo
+   * correctament (veure src/components/layout/Sidebar.tsx).
+   */
+  icon: LucideIcon | IconNode
   /**
    * Rols que tenen accés a aquesta secció.
    * Ha de coincidir EXACTAMENT amb la matriu de permisos
@@ -50,7 +57,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     label: 'Animals',
     href: '/animals',
-    icon: Beef,
+    icon: cowHead,
     rolsPermesos: ['Admin', 'Veterinari', 'Treballador'],
   },
   {
