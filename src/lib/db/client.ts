@@ -75,3 +75,16 @@ export async function auditLog(params: {
 }): Promise<void> {
   await queryPublic(
     `INSERT INTO public.audit_log
+      (tenant_id, user_id, accio, taula_afectada, registre_id, dades_json, ip_origen)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      params.tenantId,
+      params.userId,
+      params.accio,
+      params.taulaAfectada ?? null,
+      params.registreId ?? null,
+      params.dadesJson ? JSON.stringify(params.dadesJson) : null,
+      params.ipOrigen ?? null,
+    ]
+  )
+}
