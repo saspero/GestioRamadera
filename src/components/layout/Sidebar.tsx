@@ -2,9 +2,30 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LogOut, X, Icon, type IconNode } from 'lucide-react'
+import { LogOut, X, Icon, type IconNode, type LucideIcon } from 'lucide-react'
 import { getMenuForRol } from '@/lib/navigation/menuItems'
 import type { Rol } from '@/types/db'
+
+/**
+ * Renderitza la icona d'un element del menú, sigui quin sigui el seu tipus.
+ *
+ * @param icon - Icona a renderitzar: un component LucideIcon estàndard
+ * (funció) o un IconNode d'@lucide/lab (array de dades SVG, com cowHead)
+ * @returns Element JSX amb la icona renderitzada a mida 20px
+ *
+ * @remarks Aquesta funció existeix perquè TypeScript necessita el
+ * type narrowing (Array.isArray) resolt DINS del mateix bloc on
+ * s'utilitza per inferir correctament quin dels dos tipus és en
+ * cada branca. Extreure-ho a una funció amb el paràmetre ben tipat
+ * evita l'error "does not have any construct or call signatures".
+ */
+function renderIcon(icon: LucideIcon | IconNode) {
+  if (Array.isArray(icon)) {
+    return <Icon iconNode={icon} size={20} aria-hidden="true" />
+  }
+  const IconComponent = icon
+  return <IconComponent size={20} aria-hidden="true" />
+}
 
 /**
  * Propietats del component Sidebar.
@@ -105,11 +126,6 @@ export function Sidebar({ rol, nom, obertMobil, onTancarMobil }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
           {menuItems.map((item) => {
             const actiu = pathname.startsWith(item.href)
-            // item.icon pot ser un component LucideIcon (funció) o un
-            // IconNode d'@lucide/lab (array de dades SVG). Cada tipus
-            // es renderitza amb un mètode diferent.
-            const esIconNode = Array.isArray(item.icon)
-            const IconComponent = esIconNode ? null : item.icon
             return (
               <Link
                 key={item.href}
@@ -125,11 +141,7 @@ export function Sidebar({ rol, nom, obertMobil, onTancarMobil }: SidebarProps) {
                   }
                 `}
               >
-                {esIconNode ? (
-                  <Icon iconNode={item.icon as IconNode} size={20} aria-hidden="true" />
-                ) : (
-                  IconComponent && <IconComponent size={20} aria-hidden="true" />
-                )}
+                {renderIcon(item.icon)}
                 {item.label}
               </Link>
             )
