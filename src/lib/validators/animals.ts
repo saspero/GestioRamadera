@@ -6,10 +6,12 @@ import { z } from 'zod'
  * físic a l'orella són la mateixa dada, no dos camps separats).
  */
 export const crearAnimalSchema = z.object({
-  dib:           z.string().min(1).max(50),
-  racaId:        z.number().int().positive().optional(),
-  dataNaixement: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format AAAA-MM-DD').optional(),
-  sexe:          z.enum(['Mascle', 'Femella']).optional(),
+  dib:           z.string().trim().min(1, 'DIB obligatori').max(50, 'DIB massa llarg'),
+  racaId:        z.number().int().positive({ message: 'Cal seleccionar una raça' }).optional(),
+  dataNaixement: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format AAAA-MM-DD').optional().or(z.literal('')),
+  sexe:          z.enum(['Mascle', 'Femella']).optional().or(z.literal('')),
+  lotId:         z.number().int().positive({ message: 'Cal seleccionar un lot' }),
+  cortId:        z.number().int().positive({ message: 'Cal seleccionar una cort' }),
 })
 
 export const actualitzarPesSchema = z.object({

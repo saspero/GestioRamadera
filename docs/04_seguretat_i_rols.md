@@ -32,7 +32,7 @@
 |---------------|-------|-----------|------------|
 | **Dashboard** | ✅ | 📖 | 📖 (limitat) |
 | **Animals — Llistat actius** | ✅ | 📖 | ✏️ (pes, llet, estat salut) |
-| **Animals — Alta individual** | ✅ | ❌ | ❌ |
+| **Animals — Alta individual** | ✅ | ✅ | ❌ |
 | **Animals — Alta massiva CSV** | ✅ | ❌ | ❌ |
 | **Animals — Baixa (venda/mort)** | ✅ | ❌ | ❌ |
 | **Lots i Corts — Consulta** | ✅ | 📖 | 📖 |

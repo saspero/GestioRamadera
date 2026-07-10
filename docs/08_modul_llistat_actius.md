@@ -1,6 +1,6 @@
 # 08 — Mòdul de Llistat d'Animals Actius i Altes Massives
 
-> **Versió:** 1.2.0  
+> **Versió:** 1.3.0  
 > **Última actualització:** Juliol de 2026  
 > **Basat en:** Disseny_Webapp_Gestió_Ramadera_Bovina_-_Pantalla_Llistat_Actius_i_Altes_Massives_V1.docx
 
@@ -10,9 +10,13 @@
 
 ### 0.1. Decisió: DIB com a únic identificador (fusió amb "crotal")
 
-El disseny original (V1 del document funcional) tractava `crotal_id` i `dib` com dos camps separats. Aclarit amb l'usuari: **el DIB (Document d'Identificació Bovina) i el crotal físic a l'orella són la mateixa dada** — el crotal és la representació física del mateix número que consta al document DIB oficial. Mantenir-los com a columnes separades era redundant i obria la porta a inconsistències (què passa si s'omple un i no l'altre, o amb valors diferents).
+El disseny original (V1 del document funcional) tractava `crotal_id` i `dib` com dos camps separats. Aclarit amb l'usuari: **el DIB (Document d'Identificació Bovina) i el crotal físic a l'orella són la mateixa dada** — el crotal és la representació física del mateix número que consta al document DIB oficial. Mantenir-los com a columnes separades era redundant i obria la porta a inconsistències.
 
-**Canvi aplicat:** la taula `animals` té ara un únic camp `dib VARCHAR(50) NOT NULL UNIQUE`. La columna `crotal_id` ha estat eliminada. Migració disponible a [`database/06_migracio_dib_unic.sql`](../database/06_migracio_dib_unic.sql) (recreació neta, vàlida només si la taula `animals` encara no tenia dades reals).
+**Canvi aplicat:** la taula `animals` té un únic camp `dib VARCHAR(50) NOT NULL UNIQUE`. La columna `crotal_id` ha estat eliminada. Migració disponible a [`database/06_migracio_dib_unic.sql`](../database/06_migracio_dib_unic.sql).
+
+### 0.2. Decisió: Alta individual ampliada a Admin i Veterinari
+
+El disseny original (secció 5) reservava l'alta individual exclusivament a Admin, igual que l'alta massiva. Decisió de l'usuari: **l'alta individual també l'ha de poder fer un Veterinari**, perquè sovint és qui rep i registra un animal nou durant una visita a la granja. L'alta **massiva** es manté exclusiva d'Admin. Aquesta diferència de permisos entre les dues vies d'alta s'ha actualitzat també a [`04_seguretat_i_rols.md`](./04_seguretat_i_rols.md).
 
 | Funcionalitat | Estat | Detall |
 |---|---|---|
@@ -21,7 +25,7 @@ El disseny original (V1 del document funcional) tractava `crotal_id` i `dib` com
 | Indicador de bloqueig comercial (secció 2.3) | ✅ Implementat | Icona sense xifra de dies (detall exacte pendent de la fitxa individual) |
 | Altes massives per CSV (secció 4) | ✅ Implementat | Només CSV en aquesta versió; Excel (.xlsx) pendent |
 | Lot opcional per fila al CSV | ✅ Implementat | Ampliació sobre el disseny original — veure secció 4.2 |
-| Alta individual (secció 5) | ⚠️ Backend fet, sense UI | `crearAnimalIndividual()` a queries/animals.ts existeix; falta el formulari |
+| **Alta individual (secció 5)** | ✅ **Implementat** | Modal amb formulari; **Admin i Veterinari** (ampliació — veure 0.2) |
 | Selector de vista Per Cort / Per Lot (secció 2.2) | ❌ Pendent | Ara mateix només "Tots els actius" |
 | Edició ràpida de mètriques a la graella (secció 2.3-2.4) | ❌ Pendent | Pes/llet amb Intro/Tab, offline |
 | Selecció múltiple i accions massives (secció 3) | ❌ Pendent | Canviar lot, dividir lot, assignar cort |
@@ -30,14 +34,15 @@ El disseny original (V1 del document funcional) tractava `crotal_id` i `dib` com
 
 ## 1. Descripció General
 
-Aquest mòdul és la **interfície de treball diari** de la granja. Dissenyat per a una entrada de dades ràpida i àgil des de dispositius mòbils o tauletes a peu de cort, combina dues funcionalitats principals:
+Aquest mòdul és la **interfície de treball diari** de la granja. Dissenyat per a una entrada de dades ràpida i àgil des de dispositius mòbils o tauletes a peu de cort, combina tres funcionalitats principals:
 
 - **Llistat d'Animals Actius:** Graella tipus full de càlcul per al registre diari de mètriques.
-- **Altes Massives:** Importació d'animals nous mitjançant fitxer CSV o Excel.
+- **Altes Massives:** Importació d'animals nous mitjançant fitxer CSV.
+- **Alta Individual:** Formulari directe per donar d'alta un animal a la vegada.
 
 **Rols amb accés:**
 - **Admin** — Accés total (llistat, altes individuals, altes massives, gestió de lots)
-- **Veterinari** — Només lectura del llistat i fitxes d'animals
+- **Veterinari** — Lectura del llistat i fitxes d'animals + **alta individual**
 - **Treballador** — Registre diari a la graella (pes, llet, estat de salut bàsic)
 
 ---
@@ -51,98 +56,47 @@ Aquest mòdul és la **interfície de treball diari** de la granja. Dissenyat pe
 - En esborrar el text, la llista torna a mostrar tots els animals de la selecció activa (cort o lot).
 - Permet localitzar un animal sense conèixer el lot o cort on es troba.
 
-### 2.2. Selector de Visualització
+### 2.2. Estructura de la Graella (Vista Actual)
 
-Abans de la graella, l'usuari pot triar com vol veure els animals:
+| Columna | Contingut |
+|---------|-----------|
+| **DIB** | Identificador únic de l'animal |
+| **Raça** | Raça assignada (del catàleg) |
+| **Lot / Cort** | Ubicació actual de l'animal |
+| **Estat de Salut** | `Sa`, `En tractament`, `Observació`, `Crític` |
+| **Edat (dies)** | Calculada des de `data_naixement` |
+| **Indicador de Supressió** | Icona si l'animal té bloqueig comercial actiu |
 
-| Mode de Vista | Descripció |
-|--------------|-----------|
-| **Per Cort** | Mostra els animals d'una cort específica (seleccionable per desplegable) |
-| **Per Lot** | Mostra els animals d'un lot específic |
-| **Tots els actius** | Vista global de tots els animals amb `estat_actiu = TRUE` |
-
-### 2.3. Estructura de la Graella d'Edició Ràpida
-
-| Columna | Tipus de Camp | Editable | Comportament |
-|---------|--------------|---------|-------------|
-| **Crotal ID** | Text | ❌ Bloquejat | Identificador únic. No modificable |
-| **Raça** | Etiqueta visual | ❌ Bloquejat | Raça assignada (del catàleg) |
-| **Lot / Cort** | Text | ❌ Bloquejat | Ubicació actual de l'animal |
-| **Mètrica del Dia** | Input numèric | ✅ | Pes (kg) o Litres de llet, segons el tipus d'explotació. Camp actiu per defecte |
-| **Estat de Salut** | Desplegable | ✅ (Admin/Vet) | `Sa`, `En tractament`, `Observació`, `Crític` |
-| **Indicador Supressió** | Icona visual | ❌ | Mostra si l'animal té bloqueig comercial actiu |
-
-### 2.4. Comportament de la Graella (UX)
-
-- **Flux d'entrada ràpida:** En introduir la mètrica i prémer `Intro` o `Tab`, el sistema **guarda automàticament** el valor i mou el focus a la cel·la del següent animal.
-- **Feedback visual immediat:** La cel·la guardada mostra una confirmació visual breu (ex: fons verd) abans de tornar a l'estat normal.
-- **Offline:** Si no hi ha connexió, els valors s'emmagatzemen localment i es sincronitzen en reconectar (veure `01_arquitectura_general.md`, secció 3.3).
+> El selector de vista "Per Cort" / "Per Lot" i l'edició ràpida de mètriques (pes/llet amb Intro/Tab) són pendents — veure secció 0.
 
 ---
 
 ## 3. Gestió de Lots i Accions Massives
 
-### 3.1. Selecció Multiple d'Animals
-
-La graella disposa d'una columna de **caselles de selecció** (checkboxes) a l'esquerra de cada fila. En seleccionar un o més animals:
-
-- Apareix una **barra d'accions** a la part superior o inferior de la pantalla.
-- La barra mostra les accions disponibles per al rol actiu.
-
-### 3.2. Accions Massives Disponibles (Admin)
-
-| Acció | Descripció | Impacte a la BD |
-|-------|-----------|----------------|
-| **Canviar de Lot** | Assigna tots els seleccionats a un lot existent o en crea un de nou | `distribucio_animals`: tanca l'entrada actual i crea nova |
-| **Dividir Lot** | Extreu els seleccionats del lot actual per crear-ne una subdivisió | `distribucio_animals`: igual que canviar de lot, però el lot d'origen no es tanca |
-| **Assignar Ubicació / Cort** | Mou el grup seleccionat a una altra Nau o Cort física | `distribucio_animals`: actualitza `cort_id` amb nova entrada |
-
-### 3.3. Flux de Canvi de Lot (Detall)
-
-```
-Usuari selecciona animals → Prem "Canviar de Lot"
-        │
-        ▼
-Modal: "Selecciona un lot existent o crea'n un de nou"
-        │
-   ┌────┴────────────┐
-  LOT EXISTENT    LOT NOU
-   │                  │
-   │         Introduir nom del lot
-   │                  │
-   └────────┬─────────┘
-            ▼
-   [Confirmar] →
-   Per cada animal seleccionat:
-     1. UPDATE distribucio_animals
-        SET data_sortida = TODAY
-        WHERE animal_id = X AND data_sortida IS NULL
-     2. INSERT distribucio_animals
-        (animal_id, lot_id_nou, cort_id_actual, data_entrada = TODAY)
-```
+**Pendent d'implementar.** Disseny previst al document funcional original: selecció múltiple d'animals amb checkboxes, i accions de canviar de lot, dividir lot, i assignar ubicació/cort en bloc.
 
 ---
 
 ## 4. Pantalla: Altes Massives d'Animals
 
-### 4.1. Descripció
+### 4.1. Accés
 
-Mòdul per introduir animals nous a la plataforma de manera massiva, optimitzat per al moment de compra de nous caps de bestiar (quan arriba una partida de vedells, per exemple).
+Botó **"Alta massiva"**, visible només per a **Admin**, a la pantalla de llistat d'animals actius.
 
 ### 4.2. Format del Fitxer d'Importació
 
-**Formats suportats:** CSV (separador coma). Excel (`.xlsx`) queda fora d'abast d'aquesta primera versió.
+**Formats suportats:** CSV (separador coma). Excel (`.xlsx`) queda fora d'abast d'aquesta versió.
 
 **Columnes del fitxer:**
 
 | Columna | Tipus | Obligatori | Descripció |
 |---------|-------|-----------|-----------|
-| `dib` | VARCHAR(50) | ✅ | Identificador oficial de l'animal (DIB). El crotal físic a l'orella porta el mateix número — no és un camp separat |
+| `dib` | VARCHAR(50) | ✅ | Identificador oficial de l'animal (DIB) |
 | `data_naixement` | DATE (AAAA-MM-DD) | ❌ | Data de naixement de l'animal |
 | `sexe` | VARCHAR(10) | ❌ | `Mascle` o `Femella` |
-| `lot_nom` | VARCHAR(100) | ❌ | Nom del lot per a **aquest animal concret**, si es vol diferent del lot per defecte assignat al pas 2. Si no s'informa, s'aplica el lot per defecte |
+| `lot_nom` | VARCHAR(100) | ❌ | Nom del lot per a aquest animal concret, si es vol diferent del lot per defecte del pas 2 |
 
-> **Nota:** La raça i la cort de destí **no s'especifiquen per fila** al fitxer — s'assignen globalment a tot el bloc importat en un pas posterior (vegeu secció 4.3). El lot **sí es pot personalitzar per fila** mitjançant `lot_nom` (ampliació sobre el disseny original, per permetre repartir animals en diversos lots dins d'una mateixa importació); si una fila no l'indica, s'aplica el lot per defecte del pas 2.
+> La raça i la cort de destí **no s'especifiquen per fila** — s'assignen globalment a tot el bloc al pas 2. El lot **sí es pot personalitzar per fila** mitjançant `lot_nom`.
 
 **Exemple de fitxer CSV:**
 ```csv
@@ -165,15 +119,14 @@ ES040123456791,2026-01-20,Mascle,
         │
         ▼
 3. [Pantalla de Previsualització]
-   Llista provisional amb tots els animals detectats:
    · Fila vàlida → fons blanc
    · dib duplicat (intern) → fons vermell, bloquejat
-   · dib ja a la BD → fons taronja, advertència
+   · dib ja a la BD → fons taronja, advertència (es pot ometre)
    · Altre error de format → fons taronja, editable
         │
         ▼
 4. [Assignació Base Inicial] (en un sol pas per a tot el bloc)
-   · Seleccionar Raça (desplegable del catàleg)
+   · Seleccionar Raça
    · Seleccionar Lot per defecte (existent o crear nou)
      — les files amb lot_nom propi l'ignoren i usen el seu
    · Seleccionar Cort/Nau de destí
@@ -182,10 +135,8 @@ ES040123456791,2026-01-20,Mascle,
 5. [Confirmar Alta]
    Si alguna fila indica lot_nom, es resol (o es crea) el lot abans
    d'inserir els animals.
-   Per cada animal vàlid del fitxer:
-     INSERT INTO animals (dib, raca_id, data_naixement, sexe, estat_actiu=TRUE)
-     INSERT INTO distribucio_animals (animal_id, lot_id, cort_id, data_entrada=TODAY)
-       — lot_id: el propi de la fila (lot_nom) si en té, si no el per defecte
+   INSERT INTO animals (dib, raca_id, data_naixement, sexe, estat_actiu=TRUE)
+   INSERT INTO distribucio_animals (animal_id, lot_id, cort_id, data_entrada=TODAY)
    INSERT INTO public.audit_log (accio='ALTA_MASSIVA', nº registres, ...)
 ```
 
@@ -193,18 +144,36 @@ ES040123456791,2026-01-20,Mascle,
 
 | Tipus d'Error | Comportament |
 |---------------|-------------|
-| Format de fitxer no reconegut | Error crític: rebutja el fitxer, mostra missatge |
+| Format de fitxer no reconegut | Error crític: rebutja el fitxer |
 | Capçalera incorrecta | Error crític: rebutja el fitxer |
-| `dib` duplicat dins del fitxer | Fila bloquejada (vermell): no es pot importar fins que es corregeixi |
-| `dib` ja existent a la BD | Advertència (taronja): l'usuari pot desmarcar la fila per ometre-la |
-| `data_naixement` en format incorrecte | Fila editable (taronja): es pot corregir en pantalla |
-| `sexe` amb valor no reconegut | Fila editable (taronja): es pot corregir en pantalla |
+| `dib` duplicat dins del fitxer | Fila bloquejada (vermell) |
+| `dib` ja existent a la BD | Advertència (taronja), es pot ometre |
+| `data_naixement` en format incorrecte | Fila editable (taronja) |
+| `sexe` amb valor no reconegut | Fila editable (taronja) |
 
 ---
 
 ## 5. Alta Individual d'un Animal
 
-A més de la càrrega massiva, l'Admin pot donar d'alta un animal individual des d'un formulari estàndard amb tots els camps de la taula `animals` i l'assignació directa de raça, lot i cort.
+### 5.1. Accés
+
+Botó **"Alta individual"**, visible per a **Admin i Veterinari**, a la pantalla de llistat d'animals actius. Obre un modal amb un formulari directe (sense pas de previsualització, a diferència de l'alta massiva).
+
+### 5.2. Camps del Formulari
+
+| Camp | Obligatori | Descripció |
+|------|-----------|-----------|
+| DIB | ✅ | Identificador únic de l'animal |
+| Raça | ❌ | Desplegable del catàleg |
+| Data de naixement | ❌ | Selector de data |
+| Sexe | ❌ | `Mascle` / `Femella` |
+| Lot | ✅ | Desplegable dels lots existents |
+| Cort / Nau | ✅ | Desplegable de les corts existents |
+
+### 5.3. Validacions
+
+- El DIB es valida contra la BD abans de confirmar; si ja existeix, l'endpoint retorna `409` amb missatge clar (`"Aquest DIB ja existeix a la base de dades"`).
+- Lot i cort són obligatoris (a diferència de l'alta massiva, on el lot pot resoldre's més tard): en una alta individual no té sentit deixar l'animal sense ubicació.
 
 ---
 
@@ -212,14 +181,12 @@ A més de la càrrega massiva, l'Admin pot donar d'alta un animal individual des
 
 | Taula | Operació |
 |-------|---------|
-| `animals` | Alta (INSERT), actualització d'estat de salut (UPDATE) |
-| `distribucio_animals` | Alta de distribució inicial, tancament i reobertura en canvis de lot/cort |
-| `registre_pes` | Alta de registres diaris de pes |
-| `registre_llet` | Alta de registres diaris de llet |
+| `animals` | Alta (INSERT) |
+| `distribucio_animals` | Alta de distribució inicial |
 | `races_cataleg` | Lectura per assignació de raça |
 | `lots` | Lectura per assignació; INSERT si es crea lot nou |
 | `corts` | Lectura per assignació de cort |
-| `public.audit_log` | Registre d'altes individuals i massives |
+| `public.audit_log` | Registre d'altes individuals (`ALTA_INDIVIDUAL`) i massives (`ALTA_MASSIVA`) |
 
 ---
 
@@ -230,42 +197,50 @@ A més de la càrrega massiva, l'Admin pot donar d'alta un animal individual des
 | Endpoint | Mètode | Rol | Descripció |
 |---|---|---|---|
 | `/api/animals` | GET | Tots | Llistat d'actius; `?cerca=` per filtrar pel DIB |
-| `/api/animals/catalegs` | GET | Admin | Races, lots i corts per als desplegables |
-| `/api/animals/comprovar-duplicats` | POST | Admin | Comprova DIB existents (pas de previsualització) |
+| `/api/animals` | POST | Admin, Veterinari | Alta individual |
+| `/api/animals/catalegs` | GET | Admin, Veterinari | Races, lots i corts per als desplegables |
+| `/api/animals/comprovar-duplicats` | POST | Admin | Comprova DIB existents (previsualització alta massiva) |
 | `/api/animals/bulk-import` | POST | Admin | Resol lots per fila, revalida duplicats, confirma la importació |
 
 ### 7.2. Format del CSV (implementat)
 
-Capçalera exacta esperada (en minúscules, `transformHeader` normalitza automàticament):
+Capçalera exacta esperada:
 ```
 dib,data_naixement,sexe,lot_nom
 ```
 
-Parsejat amb **PapaParse** al client (`src/hooks/useAltaMassiva.ts`). La raça i la cort **no** van al fitxer — s'assignen en un pas posterior comú a tot el bloc. El lot **sí pot anar per fila** (`lot_nom`), sobreescrivint el lot per defecte del pas 2 només per a aquell animal.
+Parsejat amb **PapaParse** al client (`src/hooks/useAltaMassiva.ts`).
 
 ### 7.3. Decisió: repartiment de responsabilitats en la detecció de duplicats
 
-- **Duplicats interns** (mateix DIB repetit al fitxer): detectats íntegrament al client, bloquegen la importació (fila vermella).
-- **Duplicats contra la BD**: comprovats en dues passades — primer al pas de previsualització (`POST /api/animals/comprovar-duplicats`, informatiu, permet ometre la fila), i **revalidats de nou** a `POST /api/animals/bulk-import` just abans d'inserir, per si dos Admins importessin el mateix DIB simultàniament entre la previsualització i la confirmació (retorna `409` si en troba).
+- **Duplicats interns** (mateix DIB repetit al fitxer): detectats íntegrament al client, bloquegen la importació.
+- **Duplicats contra la BD** (alta massiva): comprovats en dues passades — previsualització (`POST /api/animals/comprovar-duplicats`) i revalidació final a `POST /api/animals/bulk-import` (retorna `409` si en troba).
+- **Duplicats contra la BD** (alta individual): `POST /api/animals` intercepta l'error de constraint `UNIQUE` de PostgreSQL (codi `23505`) i el tradueix a un `409` amb missatge clar, en comptes de deixar-lo com a error genèric 500.
 
-### 7.4. Resolució de lots i transacció d'importació
+### 7.4. Resolució de lots i transacció d'importació massiva
 
-Abans d'inserir, `POST /api/animals/bulk-import` crida `resoldreLotsPerNom()` per convertir els `lot_nom` de les files (text lliure del CSV) en IDs de lot reals — creant els lots que encara no existeixin. Aquesta resolució és **prèvia** a la transacció d'inserció principal.
+`POST /api/animals/bulk-import` crida `resoldreLotsPerNom()` per convertir els `lot_nom` de les files en IDs reals abans d'inserir. `importarAnimalsMassiu()` (`src/lib/db/queries/animals.ts`) resol el lot **per defecte** i després insereix, en una única transacció, tots els animals i les seves distribucions — cada fila usa el seu `lotId` propi si en té, o el per defecte. Si qualsevol INSERT falla, tot el bloc es desfà.
 
-`importarAnimalsMassiu()` (`src/lib/db/queries/animals.ts`) resol el lot **per defecte** (existent o el crea) i després insereix, en una única crida a `queryTenant()` (una sola transacció `BEGIN`/`COMMIT`), tots els animals i les seves distribucions inicials — cada fila usa el seu `lotId` propi si en té, o el lot per defecte si no. L'aparellament animal↔lot es fa per `dib`, segur perquè dins d'aquesta transacció cada DIB del bloc és necessàriament únic (ja validat sense duplicats interns ni contra la BD abans d'arribar aquí). Si qualsevol INSERT falla, tot el bloc es desfà.
+### 7.5. Alta individual: transacció i traçabilitat
 
-### 7.5. Propagació del rol a les pàgines client
+`crearAnimalIndividual()` insereix l'animal i la seva distribució inicial dins la mateixa transacció que aplica `queryTenant()`. L'endpoint registra l'acció a `public.audit_log` amb `accio='ALTA_INDIVIDUAL'` i el `dib` de l'animal creat.
 
-Per evitar que cada pàgina hagi de fer una petició pròpia només per saber el rol de l'usuari, es va introduir `SessioProvider`/`useSessio()` (`src/lib/session/SessioContext.tsx`), muntat una única vegada a `AppShell` amb el `rol` i `nom` ja resolts pel Server Component `layout.tsx`. Aquest valor és només a efectes d'UI (mostrar/amagar el botó d'alta massiva); la protecció real és sempre a l'endpoint.
+### 7.6. Propagació del rol a les pàgines client
 
-### 7.6. Fitxers del Projecte
+`SessioProvider`/`useSessio()` (`src/lib/session/SessioContext.tsx`), muntat a `AppShell`, exposa `rol` i `nom` (ja resolts pel Server Component `layout.tsx`) a totes les pàgines filles sense peticions addicionals. Aquest valor és només a efectes d'UI; la protecció real és sempre a l'endpoint.
+
+### 7.7. Fitxers del Projecte
 
 | Fitxer | Responsabilitat |
 |---|---|
-| `src/lib/validators/animals.ts` | Schemas Zod: fila de CSV (amb `lot_nom` opcional), assignació base, payload complet |
-| `src/lib/db/queries/animals.ts` | Totes les queries: llistat, cerca, catàlegs, resolució de lots per nom, alta individual i massiva |
-| `src/app/api/animals/*/route.ts` | Els 4 endpoints (llistat, catàlegs, duplicats, bulk-import) |
-| `src/hooks/useAltaMassiva.ts` | Orquestra tot el flux client: parsing, validació, confirmació |
+| `src/lib/validators/animals.ts` | Schemas Zod: alta individual, fila de CSV, assignació base, payload complet |
+| `src/lib/db/queries/animals.ts` | Totes les queries: llistat, cerca, catàlegs, resolució de lots, alta individual i massiva |
+| `src/app/api/animals/route.ts` | GET (llistat) i POST (alta individual) |
+| `src/app/api/animals/catalegs/route.ts` | Catàlegs per als desplegables |
+| `src/app/api/animals/comprovar-duplicats/route.ts` | Comprovació de duplicats (alta massiva) |
+| `src/app/api/animals/bulk-import/route.ts` | Confirmació de l'alta massiva |
+| `src/hooks/useAltaMassiva.ts` | Orquestra el flux client de l'alta massiva |
 | `src/components/animals/TaulaAnimals.tsx` | Taula del llistat amb cercador |
 | `src/components/animals/ModalAltaMassiva.tsx` | Modal dels 3 passos de l'alta massiva |
+| `src/components/animals/ModalAltaIndividual.tsx` | Modal del formulari d'alta individual |
 | `src/lib/session/SessioContext.tsx` | Context per exposar rol/nom a les pàgines filles |

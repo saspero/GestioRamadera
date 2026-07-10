@@ -12,8 +12,9 @@ import { getRacesCataleg, getLots, getCorts } from '@/lib/db/queries/animals'
  * capçaleres x-user-id, x-tenant-schema i x-user-rol a partir del JWT
  * @returns JSON { races, lots, corts }, o 401/403 segons correspongui
  *
- * @remarks Control d'accés: Admin únicament (docs/08_modul_llistat_actius.md,
- * secció "Rols amb accés" — les altes són exclusives d'Admin).
+ * @remarks Control d'accés: Admin i Veterinari (docs/08_modul_llistat_actius.md,
+ * secció "Rols amb accés" — ampliat per cobrir també l'alta individual,
+ * que Veterinari pot fer des de la versió 1.3.0 del mòdul).
  * @remarks Multitenancy: delega a getRacesCataleg/getLots/getCorts
  * (src/lib/db/queries/animals.ts), aïllades via queryTenant/search_path.
  */
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'No autoritzat' }, { status: 401 })
   }
 
-  if (ctx.rol !== 'Admin') {
+  if (ctx.rol !== 'Admin' && ctx.rol !== 'Veterinari') {
     return NextResponse.json({ error: 'Sense permisos per a aquesta operació' }, { status: 403 })
   }
 
