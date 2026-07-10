@@ -10,9 +10,21 @@ import type { LotResum, AnimalDelLot } from '@/types/lots'
  * @remarks Control d'accés: lectura oberta als 3 rols (Admin,
  * Veterinari, Treballador) — docs/14_modul_lots.md.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ * @remarks COUNT() de PostgreSQL retorna bigint, que el driver pg
+ * serialitza com a string per evitar pèrdua de precisió amb números
+ * grans. Es converteix explícitament amb Number() abans de retornar,
+ * igual que a la resta de queries del projecte amb COUNT (per exemple
+ * getTotalAnimals a src/lib/db/queries/dashboard.ts) — sense aquesta
+ * conversió, el camp arriba com a string al frontend i trenca
+ * qualsevol ús numèric silenciosament.
  */
 export async function getLotsAmbRecompte(ctx: TenantContext): Promise<LotResum[]> {
-  return queryTenant<LotResum>(
+  const rows = await queryTenant<{
+    id: number
+    nomLot: string
+    dataCreacio: string
+    nombreAnimals: string
+  }>(
     ctx,
     `SELECT
        l.id,
@@ -27,6 +39,8 @@ export async function getLotsAmbRecompte(ctx: TenantContext): Promise<LotResum[]
      GROUP BY l.id, l.nom_lot, l.data_creacio
      ORDER BY l.data_creacio DESC`
   )
+
+  return rows.map((r) => ({ ...r, nombreAnimals: Number(r.nombreAnimals) }))
 }
 
 /**
