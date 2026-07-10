@@ -6,6 +6,7 @@ import {
   Truck,
   Archive,
   Settings,
+  Warehouse,
   type LucideIcon,
 } from 'lucide-react'
 import { cowHead } from '@lucide/lab'
@@ -46,6 +47,12 @@ export type MenuItem = {
  * @remarks Control d'accés: aquest array es filtra a getMenuForRol()
  * segons el rol de l'usuari autenticat. No conté cap dada sensible,
  * és segur incloure'l en un component client.
+ * @remarks "Granja/Corts" i "Lots" van ser una única secció "Lots i
+ * Corts" fins a la versió 1.3.0 (docs/13_modul_granja_corts.md,
+ * secció 0 — separades perquè són conceptualment diferents:
+ * infraestructura física vs. agrupació d'animals). Visibles pels 3
+ * rols (Treballador només amb permisos de lectura — la comprovació
+ * de qui pot crear/editar es fa a cada endpoint, no aquí).
  */
 export const MENU_ITEMS: MenuItem[] = [
   {
@@ -61,7 +68,13 @@ export const MENU_ITEMS: MenuItem[] = [
     rolsPermesos: ['Admin', 'Veterinari', 'Treballador'],
   },
   {
-    label: 'Lots i Corts',
+    label: 'Granja / Corts',
+    href: '/granja-corts',
+    icon: Warehouse,
+    rolsPermesos: ['Admin', 'Veterinari', 'Treballador'],
+  },
+  {
+    label: 'Lots',
     href: '/lots',
     icon: Layers,
     rolsPermesos: ['Admin', 'Veterinari', 'Treballador'],
