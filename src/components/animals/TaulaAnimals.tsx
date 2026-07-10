@@ -42,7 +42,7 @@ export function TaulaAnimals({ animals, cerca, onCercaChange, carregant }: Taula
         <CercadorRapid
           valor={cerca}
           onChange={onCercaChange}
-          placeholder="Cercar per crotal..."
+          placeholder="Cercar per DIB..."
         />
       </div>
 
@@ -50,7 +50,7 @@ export function TaulaAnimals({ animals, cerca, onCercaChange, carregant }: Taula
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-gray-500 border-b border-gray-100 bg-gray-50">
-              <th className="px-4 py-2 font-medium">Crotal</th>
+              <th className="px-4 py-2 font-medium">DIB</th>
               <th className="px-4 py-2 font-medium">Raça</th>
               <th className="px-4 py-2 font-medium">Lot / Cort</th>
               <th className="px-4 py-2 font-medium">Estat de salut</th>
@@ -74,7 +74,7 @@ export function TaulaAnimals({ animals, cerca, onCercaChange, carregant }: Taula
             ) : (
               animals.map((animal) => (
                 <tr key={animal.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-2.5 font-medium text-gray-900">{animal.crotalId}</td>
+                  <td className="px-4 py-2.5 font-medium text-gray-900">{animal.dib}</td>
                   <td className="px-4 py-2.5 text-gray-700">{animal.nomRaca ?? '—'}</td>
                   <td className="px-4 py-2.5 text-gray-700">
                     {animal.nomLot ?? '—'}

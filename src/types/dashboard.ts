@@ -47,7 +47,7 @@ export type EstocMagatzemBlock = {
 /** Animal amb bloqueig comercial actiu per període de supressió. */
 export type AnimalEnSupressioBlock = {
   animalId: number
-  crotalId: string
+  dib: string
   nomMedicament: string
   dataAlliberament: string
   diesRestants: number
@@ -59,7 +59,7 @@ export type AlertaEstocBlock = EstocMagatzemBlock
 /** Baixa recent (venda o mort) per al resum del Dashboard. */
 export type BaixaRecentBlock = {
   animalId: number
-  crotalId: string
+  dib: string
   motiu: 'Venda' | 'Mort'
   dataBaixa: string
 }

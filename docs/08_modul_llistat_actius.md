@@ -1,6 +1,6 @@
 # 08 — Mòdul de Llistat d'Animals Actius i Altes Massives
 
-> **Versió:** 1.1.0  
+> **Versió:** 1.2.0  
 > **Última actualització:** Juliol de 2026  
 > **Basat en:** Disseny_Webapp_Gestió_Ramadera_Bovina_-_Pantalla_Llistat_Actius_i_Altes_Massives_V1.docx
 
@@ -8,12 +8,19 @@
 
 ## 0. Estat d'Implementació
 
+### 0.1. Decisió: DIB com a únic identificador (fusió amb "crotal")
+
+El disseny original (V1 del document funcional) tractava `crotal_id` i `dib` com dos camps separats. Aclarit amb l'usuari: **el DIB (Document d'Identificació Bovina) i el crotal físic a l'orella són la mateixa dada** — el crotal és la representació física del mateix número que consta al document DIB oficial. Mantenir-los com a columnes separades era redundant i obria la porta a inconsistències (què passa si s'omple un i no l'altre, o amb valors diferents).
+
+**Canvi aplicat:** la taula `animals` té ara un únic camp `dib VARCHAR(50) NOT NULL UNIQUE`. La columna `crotal_id` ha estat eliminada. Migració disponible a [`database/06_migracio_dib_unic.sql`](../database/06_migracio_dib_unic.sql) (recreació neta, vàlida només si la taula `animals` encara no tenia dades reals).
+
 | Funcionalitat | Estat | Detall |
 |---|---|---|
 | Llistat d'animals actius (secció 2.2 vista global) | ✅ Implementat | `GET /api/animals`, taula amb raça/lot/cort/estat de salut/edat |
-| Cercador ràpid per crotal (secció 2.1) | ✅ Implementat | Debounce 250ms, `GET /api/animals?cerca=` |
+| Cercador ràpid pel DIB (secció 2.1) | ✅ Implementat | Debounce 250ms, `GET /api/animals?cerca=` |
 | Indicador de bloqueig comercial (secció 2.3) | ✅ Implementat | Icona sense xifra de dies (detall exacte pendent de la fitxa individual) |
 | Altes massives per CSV (secció 4) | ✅ Implementat | Només CSV en aquesta versió; Excel (.xlsx) pendent |
+| Lot opcional per fila al CSV | ✅ Implementat | Ampliació sobre el disseny original — veure secció 4.2 |
 | Alta individual (secció 5) | ⚠️ Backend fet, sense UI | `crearAnimalIndividual()` a queries/animals.ts existeix; falta el formulari |
 | Selector de vista Per Cort / Per Lot (secció 2.2) | ❌ Pendent | Ara mateix només "Tots els actius" |
 | Edició ràpida de mètriques a la graella (secció 2.3-2.4) | ❌ Pendent | Pes/llet amb Intro/Tab, offline |
@@ -40,7 +47,7 @@ Aquest mòdul és la **interfície de treball diari** de la granja. Dissenyat pe
 ### 2.1. Cercador Intel·ligent
 
 - Situat a la part superior central de la pantalla.
-- Filtra la graella en **temps real** a mesura que l'usuari escriu dígits del crotal.
+- Filtra la graella en **temps real** a mesura que l'usuari escriu dígits del DIB.
 - En esborrar el text, la llista torna a mostrar tots els animals de la selecció activa (cort o lot).
 - Permet localitzar un animal sense conèixer el lot o cort on es troba.
 
@@ -124,57 +131,61 @@ Mòdul per introduir animals nous a la plataforma de manera massiva, optimitzat 
 
 ### 4.2. Format del Fitxer d'Importació
 
-**Formats suportats:** CSV (separador coma) o Excel (`.xlsx`)
+**Formats suportats:** CSV (separador coma). Excel (`.xlsx`) queda fora d'abast d'aquesta primera versió.
 
 **Columnes del fitxer:**
 
 | Columna | Tipus | Obligatori | Descripció |
 |---------|-------|-----------|-----------|
-| `crotal_id` | VARCHAR(20) | ✅ | Identificador oficial del crotal auricular |
-| `dib` | VARCHAR(50) | ❌ | Codi del Document d'Identificació Bovina |
+| `dib` | VARCHAR(50) | ✅ | Identificador oficial de l'animal (DIB). El crotal físic a l'orella porta el mateix número — no és un camp separat |
 | `data_naixement` | DATE (AAAA-MM-DD) | ❌ | Data de naixement de l'animal |
 | `sexe` | VARCHAR(10) | ❌ | `Mascle` o `Femella` |
+| `lot_nom` | VARCHAR(100) | ❌ | Nom del lot per a **aquest animal concret**, si es vol diferent del lot per defecte assignat al pas 2. Si no s'informa, s'aplica el lot per defecte |
 
-> **Nota:** La raça, el lot inicial i la cort de destí **no s'especifiquen per fila** al fitxer. S'assignen globalment a tots els animals importats en un pas posterior (vegeu secció 4.3).
+> **Nota:** La raça i la cort de destí **no s'especifiquen per fila** al fitxer — s'assignen globalment a tot el bloc importat en un pas posterior (vegeu secció 4.3). El lot **sí es pot personalitzar per fila** mitjançant `lot_nom` (ampliació sobre el disseny original, per permetre repartir animals en diversos lots dins d'una mateixa importació); si una fila no l'indica, s'aplica el lot per defecte del pas 2.
 
 **Exemple de fitxer CSV:**
 ```csv
-crotal_id,dib,data_naixement,sexe
-ES040123456789,DIB-001-2026,2026-01-15,Mascle
-ES040123456790,DIB-002-2026,2026-01-18,Femella
-ES040123456791,,2026-01-20,Mascle
+dib,data_naixement,sexe,lot_nom
+ES040123456789,2026-01-15,Mascle,
+ES040123456790,2026-01-18,Femella,Lot Mares
+ES040123456791,2026-01-20,Mascle,
 ```
 
 ### 4.3. Flux d'Importació
 
 ```
-1. Usuari puja el fitxer (CSV o Excel)
+1. Usuari puja el fitxer (CSV)
         │
         ▼
 2. [Validació automàtica]
    · Format de columnes correcte?
-   · crotal_id duplicat dins del fitxer?
-   · crotal_id ja existent a la BD?
+   · dib duplicat dins del fitxer?
+   · dib ja existent a la BD?
         │
         ▼
 3. [Pantalla de Previsualització]
    Llista provisional amb tots els animals detectats:
    · Fila vàlida → fons blanc
-   · crotal_id duplicat (intern) → fons vermell, bloquejat
-   · crotal_id ja a la BD → fons taronja, advertència
+   · dib duplicat (intern) → fons vermell, bloquejat
+   · dib ja a la BD → fons taronja, advertència
    · Altre error de format → fons taronja, editable
         │
         ▼
 4. [Assignació Base Inicial] (en un sol pas per a tot el bloc)
    · Seleccionar Raça (desplegable del catàleg)
-   · Seleccionar Lot inicial (existent o crear nou)
+   · Seleccionar Lot per defecte (existent o crear nou)
+     — les files amb lot_nom propi l'ignoren i usen el seu
    · Seleccionar Cort/Nau de destí
         │
         ▼
 5. [Confirmar Alta]
+   Si alguna fila indica lot_nom, es resol (o es crea) el lot abans
+   d'inserir els animals.
    Per cada animal vàlid del fitxer:
-     INSERT INTO animals (crotal_id, dib, raca_id, data_naixement, sexe, estat_actiu=TRUE)
+     INSERT INTO animals (dib, raca_id, data_naixement, sexe, estat_actiu=TRUE)
      INSERT INTO distribucio_animals (animal_id, lot_id, cort_id, data_entrada=TODAY)
+       — lot_id: el propi de la fila (lot_nom) si en té, si no el per defecte
    INSERT INTO public.audit_log (accio='ALTA_MASSIVA', nº registres, ...)
 ```
 
@@ -184,8 +195,8 @@ ES040123456791,,2026-01-20,Mascle
 |---------------|-------------|
 | Format de fitxer no reconegut | Error crític: rebutja el fitxer, mostra missatge |
 | Capçalera incorrecta | Error crític: rebutja el fitxer |
-| `crotal_id` duplicat dins del fitxer | Fila bloquejada (vermell): no es pot importar fins que es corregeixi |
-| `crotal_id` ja existent a la BD | Advertència (taronja): l'usuari pot desmarcar la fila per ometre-la |
+| `dib` duplicat dins del fitxer | Fila bloquejada (vermell): no es pot importar fins que es corregeixi |
+| `dib` ja existent a la BD | Advertència (taronja): l'usuari pot desmarcar la fila per ometre-la |
 | `data_naixement` en format incorrecte | Fila editable (taronja): es pot corregir en pantalla |
 | `sexe` amb valor no reconegut | Fila editable (taronja): es pot corregir en pantalla |
 
@@ -218,28 +229,30 @@ A més de la càrrega massiva, l'Admin pot donar d'alta un animal individual des
 
 | Endpoint | Mètode | Rol | Descripció |
 |---|---|---|---|
-| `/api/animals` | GET | Tots | Llistat d'actius; `?cerca=` per filtrar per crotal |
+| `/api/animals` | GET | Tots | Llistat d'actius; `?cerca=` per filtrar pel DIB |
 | `/api/animals/catalegs` | GET | Admin | Races, lots i corts per als desplegables |
-| `/api/animals/comprovar-duplicats` | POST | Admin | Comprova crotal_id existents (pas de previsualització) |
-| `/api/animals/bulk-import` | POST | Admin | Confirma la importació; revalida duplicats abans d'inserir |
+| `/api/animals/comprovar-duplicats` | POST | Admin | Comprova DIB existents (pas de previsualització) |
+| `/api/animals/bulk-import` | POST | Admin | Resol lots per fila, revalida duplicats, confirma la importació |
 
 ### 7.2. Format del CSV (implementat)
 
 Capçalera exacta esperada (en minúscules, `transformHeader` normalitza automàticament):
 ```
-crotal_id,dib,data_naixement,sexe
+dib,data_naixement,sexe,lot_nom
 ```
 
-Parsejat amb **PapaParse** al client (`src/hooks/useAltaMassiva.ts`). La raça, el lot i la cort **no** van al fitxer — s'assignen en un pas posterior comú a tot el bloc, tal com especifica la secció 4.2.
+Parsejat amb **PapaParse** al client (`src/hooks/useAltaMassiva.ts`). La raça i la cort **no** van al fitxer — s'assignen en un pas posterior comú a tot el bloc. El lot **sí pot anar per fila** (`lot_nom`), sobreescrivint el lot per defecte del pas 2 només per a aquell animal.
 
 ### 7.3. Decisió: repartiment de responsabilitats en la detecció de duplicats
 
-- **Duplicats interns** (mateix crotal repetit al fitxer): detectats íntegrament al client, bloquegen la importació (fila vermella).
-- **Duplicats contra la BD**: comprovats en dues passades — primer al pas de previsualització (`POST /api/animals/comprovar-duplicats`, informatiu, permet ometre la fila), i **revalidats de nou** a `POST /api/animals/bulk-import` just abans d'inserir, per si dos Admins importessin el mateix crotal simultàniament entre la previsualització i la confirmació (retorna `409` si en troba).
+- **Duplicats interns** (mateix DIB repetit al fitxer): detectats íntegrament al client, bloquegen la importació (fila vermella).
+- **Duplicats contra la BD**: comprovats en dues passades — primer al pas de previsualització (`POST /api/animals/comprovar-duplicats`, informatiu, permet ometre la fila), i **revalidats de nou** a `POST /api/animals/bulk-import` just abans d'inserir, per si dos Admins importessin el mateix DIB simultàniament entre la previsualització i la confirmació (retorna `409` si en troba).
 
-### 7.4. Transacció d'importació
+### 7.4. Resolució de lots i transacció d'importació
 
-`importarAnimalsMassiu()` (`src/lib/db/queries/animals.ts`) resol el lot de destí (existent o el crea) i després insereix tots els animals + les seves distribucions inicials amb `UNNEST` sobre arrays de paràmetres, dins la transacció `BEGIN`/`COMMIT` que ja aplica `queryTenant()` — si qualsevol INSERT falla, tot el bloc es desfà.
+Abans d'inserir, `POST /api/animals/bulk-import` crida `resoldreLotsPerNom()` per convertir els `lot_nom` de les files (text lliure del CSV) en IDs de lot reals — creant els lots que encara no existeixin. Aquesta resolució és **prèvia** a la transacció d'inserció principal.
+
+`importarAnimalsMassiu()` (`src/lib/db/queries/animals.ts`) resol el lot **per defecte** (existent o el crea) i després insereix, en una única crida a `queryTenant()` (una sola transacció `BEGIN`/`COMMIT`), tots els animals i les seves distribucions inicials — cada fila usa el seu `lotId` propi si en té, o el lot per defecte si no. L'aparellament animal↔lot es fa per `dib`, segur perquè dins d'aquesta transacció cada DIB del bloc és necessàriament únic (ja validat sense duplicats interns ni contra la BD abans d'arribar aquí). Si qualsevol INSERT falla, tot el bloc es desfà.
 
 ### 7.5. Propagació del rol a les pàgines client
 
@@ -249,8 +262,8 @@ Per evitar que cada pàgina hagi de fer una petició pròpia només per saber el
 
 | Fitxer | Responsabilitat |
 |---|---|
-| `src/lib/validators/animals.ts` | Schemas Zod: fila de CSV, assignació base, payload complet |
-| `src/lib/db/queries/animals.ts` | Totes les queries: llistat, cerca, catàlegs, alta individual i massiva |
+| `src/lib/validators/animals.ts` | Schemas Zod: fila de CSV (amb `lot_nom` opcional), assignació base, payload complet |
+| `src/lib/db/queries/animals.ts` | Totes les queries: llistat, cerca, catàlegs, resolució de lots per nom, alta individual i massiva |
 | `src/app/api/animals/*/route.ts` | Els 4 endpoints (llistat, catàlegs, duplicats, bulk-import) |
 | `src/hooks/useAltaMassiva.ts` | Orquestra tot el flux client: parsing, validació, confirmació |
 | `src/components/animals/TaulaAnimals.tsx` | Taula del llistat amb cercador |

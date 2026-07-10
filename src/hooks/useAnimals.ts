@@ -5,7 +5,11 @@ import type { AnimalActiu } from '@/types/db'
 
 /**
  * Hook per carregar i gestionar els animals actius.
- * Inclou cerca en temps real per crotal.
+ * Inclou cerca en temps real pel DIB.
+ *
+ * @remarks No utilitzat actualment — src/app/(app)/animals/page.tsx
+ * implementa la seva pròpia lògica de càrrega amb debounce. Es manté
+ * disponible per si cal reutilitzar-lo en un altre punt de l'app.
  */
 export function useAnimals() {
   const [animals, setAnimals]   = useState<AnimalActiu[]>([])

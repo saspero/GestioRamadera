@@ -157,8 +157,7 @@ CREATE TABLE lots (
 
 CREATE TABLE animals (
     id             SERIAL PRIMARY KEY,
-    crotal_id      VARCHAR(20)     NOT NULL UNIQUE,
-    dib            VARCHAR(50),
+    dib            VARCHAR(50)     NOT NULL UNIQUE,
     raca_id        INTEGER         REFERENCES races_cataleg(id) ON DELETE SET NULL,
     data_naixement DATE,
     estat_salut    estat_salut_enum NOT NULL DEFAULT 'Sa',
@@ -172,14 +171,16 @@ CREATE TABLE animals (
 CREATE INDEX idx_animals_actiu ON animals(estat_actiu);
 CREATE INDEX idx_animals_raca  ON animals(raca_id);
 
--- Índex de text complet per cerca ràpida per crotal (parcial, com fa el cercador)
-CREATE INDEX idx_animals_crotal_trgm ON animals USING gin (crotal_id extensions.gin_trgm_ops);
+-- Índex de text complet per cerca ràpida pel DIB (parcial, com fa el cercador)
+CREATE INDEX idx_animals_dib_trgm ON animals USING gin (dib extensions.gin_trgm_ops);
 
+COMMENT ON COLUMN animals.dib IS
+    'Identificador oficial únic de l''animal (Document d''Identificació Bovina). El crotal físic a l''orella porta el mateix número — no és un camp separat.';
 COMMENT ON COLUMN animals.estat_actiu IS
     'Mai s''esborra un animal. estat_actiu=FALSE indica baixa (venda o mort). L''historial es preserva sempre.';
 COMMENT ON COLUMN animals.estat_salut IS
     'Estat actual. Els canvis queden enregistrats a historial_estat_salut per traçabilitat clínica.';
-COMMENT ON INDEX  idx_animals_crotal_trgm IS
+COMMENT ON INDEX  idx_animals_dib_trgm IS
     'Índex trigram per a cerques parcials ràpides per crotal (LIKE, ILIKE). Requereix extensió pg_trgm.';
 
 
@@ -589,7 +590,6 @@ COMMENT ON FUNCTION fn_registra_canvi_estat_salut() IS
 CREATE VIEW v_animals_actius AS
 SELECT
     a.id,
-    a.crotal_id,
     a.dib,
     r.nom_raca,
     a.data_naixement,
@@ -617,7 +617,7 @@ COMMENT ON VIEW v_animals_actius IS
 CREATE VIEW v_animals_en_supressio AS
 SELECT
     a.id          AS animal_id,
-    a.crotal_id,
+    a.dib,
     a.estat_salut,
     t.data_inici,
     t.data_alliberament,

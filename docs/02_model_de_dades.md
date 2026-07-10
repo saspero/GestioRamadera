@@ -405,8 +405,7 @@ CREATE TABLE lots (
 -- ------------------------------------------------------------
 CREATE TABLE animals (
     id             SERIAL PRIMARY KEY,
-    crotal_id      VARCHAR(20) NOT NULL UNIQUE,
-    dib            VARCHAR(50),
+    dib            VARCHAR(50) NOT NULL UNIQUE,
     raca_id        INTEGER REFERENCES races_cataleg(id) ON DELETE SET NULL,
     data_naixement DATE,
     estat_salut    estat_salut_enum NOT NULL DEFAULT 'Sa',
@@ -420,17 +419,19 @@ CREATE TABLE animals (
 CREATE INDEX idx_animals_actiu ON animals(estat_actiu);
 CREATE INDEX idx_animals_raca  ON animals(raca_id);
 
--- Índex GIN per a cerca parcial de crotal en temps real (pg_trgm)
-CREATE INDEX idx_animals_crotal_trgm ON animals USING GIN (crotal_id gin_trgm_ops);
+-- Índex GIN per a cerca parcial pel DIB en temps real (pg_trgm)
+CREATE INDEX idx_animals_dib_trgm ON animals USING GIN (dib gin_trgm_ops);
 
 CREATE TRIGGER trg_animals_updated_at
     BEFORE UPDATE ON animals
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+COMMENT ON COLUMN animals.dib IS
+    'Identificador oficial únic de l''animal (Document d''Identificació Bovina). El crotal físic a l''orella porta el mateix número — no és un camp separat.';
 COMMENT ON COLUMN animals.estat_actiu IS
     'Mai s''esborra un animal. estat_actiu=FALSE indica baixa per venda o mort. Historial sempre preservat.';
-COMMENT ON INDEX idx_animals_crotal_trgm IS
-    'Índex GIN per a cerca parcial (LIKE %text%) en temps real sobre crotal_id. Requereix extensió pg_trgm.';
+COMMENT ON INDEX idx_animals_dib_trgm IS
+    'Índex GIN per a cerca parcial (LIKE %text%) en temps real sobre dib. Requereix extensió pg_trgm.';
 
 -- ------------------------------------------------------------
 -- Taula: historial_estat_salut  [NOU]
@@ -711,7 +712,6 @@ COMMENT ON COLUMN presets_llet_pols.actiu IS
 CREATE VIEW v_animals_actius AS
 SELECT
     a.id,
-    a.crotal_id,
     a.dib,
     r.nom_raca,
     a.data_naixement,
@@ -732,7 +732,7 @@ WHERE a.estat_actiu = TRUE;
 -- Animals en període de supressió (bloqueig comercial actiu)
 CREATE VIEW v_animals_en_supressio AS
 SELECT
-    a.crotal_id,
+    a.dib,
     a.estat_salut,
     t.data_alliberament,
     t.data_alliberament - CURRENT_DATE AS dies_restants,

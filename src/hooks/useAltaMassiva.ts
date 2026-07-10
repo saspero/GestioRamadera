@@ -10,7 +10,7 @@ import { filaAltaMassivaSchema, type FilaAltaMassiva } from '@/lib/validators/an
 export type FilaPrevisualitzacio = {
   fila: number
   dades: Record<string, string>
-  /** `valida`: llest per importar. `duplicat_intern`: crotal repetit al mateix fitxer (bloqueja). `duplicat_bd`: ja existeix a la BD (advertència, es pot ometre). `error`: camp amb format incorrecte (editable). */
+  /** `valida`: llest per importar. `duplicat_intern`: DIB repetit al mateix fitxer (bloqueja). `duplicat_bd`: ja existeix a la BD (advertència, es pot ometre). `error`: camp amb format incorrecte (editable). */
   estat: 'valida' | 'duplicat_intern' | 'duplicat_bd' | 'error'
   errors: string[]
   /** Si l'usuari ha desmarcat la fila per ometre-la de la importació. */
@@ -19,7 +19,12 @@ export type FilaPrevisualitzacio = {
 
 type EstatImportacio = 'idle' | 'parsejant' | 'comprovant' | 'confirmant' | 'completat' | 'error'
 
-const CAPÇALERA_ESPERADA = ['crotal_id', 'dib', 'data_naixement', 'sexe']
+/**
+ * @remarks lot_nom és opcional: si una fila l'indica, s'aplica NOMÉS
+ * a aquell animal, sobreescrivint el lot per defecte del pas 2
+ * (docs/08_modul_llistat_actius.md, secció 4.2 — ampliació).
+ */
+const CAPÇALERA_ESPERADA = ['dib', 'data_naixement', 'sexe']
 
 /**
  * Hook que orquestra tot el flux d'alta massiva d'animals:
@@ -45,7 +50,7 @@ export function useAltaMassiva() {
   /**
    * Processa el fitxer CSV pujat per l'usuari: parseja amb PapaParse,
    * valida cada fila amb Zod, detecta duplicats interns, i després
-   * consulta al backend quins crotals ja existeixen a la BD.
+   * consulta al backend quins DIB ja existeixen a la BD.
    *
    * @param file - Fitxer CSV seleccionat per l'usuari
    */
@@ -64,17 +69,17 @@ export function useAltaMassiva() {
 
         if (!capçaleraValida) {
           setErrorGeneral(
-            `Capçalera incorrecta. S'esperava: ${CAPÇALERA_ESPERADA.join(', ')}`
+            `Capçalera incorrecta. S'esperava com a mínim: ${CAPÇALERA_ESPERADA.join(', ')}`
           )
           setEstat('error')
           return
         }
 
         // Validació per fila + detecció de duplicats interns
-        const crotalsVistos = new Set<string>()
+        const dibsVistos = new Set<string>()
         const filesValidades: FilaPrevisualitzacio[] = results.data.map((dades, idx) => {
           const parsed = filaAltaMassivaSchema.safeParse(dades)
-          const crotal = dades.crotal_id?.trim()
+          const dib = dades.dib?.trim()
 
           if (!parsed.success) {
             return {
@@ -86,41 +91,41 @@ export function useAltaMassiva() {
             }
           }
 
-          if (crotal && crotalsVistos.has(crotal)) {
+          if (dib && dibsVistos.has(dib)) {
             return {
               fila: idx + 1,
               dades,
               estat: 'duplicat_intern',
-              errors: ['Crotal repetit dins del mateix fitxer'],
+              errors: ['DIB repetit dins del mateix fitxer'],
               omesa: false,
             }
           }
-          if (crotal) crotalsVistos.add(crotal)
+          if (dib) dibsVistos.add(dib)
 
           return { fila: idx + 1, dades, estat: 'valida', errors: [], omesa: false }
         })
 
         // Comprovació de duplicats contra la BD (només per les files vàlides fins ara)
         setEstat('comprovant')
-        const crotalsPerComprovar = filesValidades
+        const dibsPerComprovar = filesValidades
           .filter((f) => f.estat === 'valida')
-          .map((f) => f.dades.crotal_id.trim())
+          .map((f) => f.dades.dib.trim())
 
         try {
-          if (crotalsPerComprovar.length > 0) {
+          if (dibsPerComprovar.length > 0) {
             const res = await fetch('/api/animals/comprovar-duplicats', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ crotals: crotalsPerComprovar }),
+              body: JSON.stringify({ dibs: dibsPerComprovar }),
             })
             if (!res.ok) throw new Error('Error en comprovar duplicats')
             const { existents }: { existents: string[] } = await res.json()
             const existentsSet = new Set(existents)
 
             filesValidades.forEach((f) => {
-              if (f.estat === 'valida' && existentsSet.has(f.dades.crotal_id.trim())) {
+              if (f.estat === 'valida' && existentsSet.has(f.dades.dib.trim())) {
                 f.estat = 'duplicat_bd'
-                f.errors = ['Aquest crotal ja existeix a la base de dades']
+                f.errors = ['Aquest DIB ja existeix a la base de dades']
               }
             })
           }
@@ -149,7 +154,7 @@ export function useAltaMassiva() {
   /**
    * Confirma la importació de totes les files vàlides i no omeses.
    *
-   * @param assignacio - Raça, lot i cort de destí per a tot el bloc
+   * @param assignacio - Raça, lot per defecte i cort de destí per al bloc
    */
   const confirmarImportacio = useCallback(
     async (assignacio: {
@@ -169,10 +174,10 @@ export function useAltaMassiva() {
 
       try {
         const animals: FilaAltaMassiva[] = filesAImportar.map((f) => ({
-          crotal_id: f.dades.crotal_id.trim(),
-          dib: f.dades.dib?.trim() || '',
+          dib: f.dades.dib.trim(),
           data_naixement: f.dades.data_naixement?.trim() || '',
           sexe: (f.dades.sexe?.trim() || '') as FilaAltaMassiva['sexe'],
+          lot_nom: f.dades.lot_nom?.trim() || '',
         }))
 
         const res = await fetch('/api/animals/bulk-import', {

@@ -24,7 +24,7 @@ export function UltimesBaixesList({ dades }: { dades: BaixaRecentBlock[] }) {
         <ul className="space-y-2">
           {dades.map((b) => (
             <li key={b.animalId} className="flex items-center justify-between text-sm">
-              <span className="text-gray-700">{b.crotalId}</span>
+              <span className="text-gray-700">{b.dib}</span>
               <span className="flex items-center gap-2">
                 <span
                   className={`px-2 py-0.5 rounded-full text-xs font-medium ${

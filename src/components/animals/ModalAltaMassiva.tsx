@@ -128,7 +128,7 @@ export function ModalAltaMassiva({ onTancar, onImportacioCompletada }: ModalAlta
             <div className="text-center py-10">
               <Upload size={40} className="mx-auto text-gray-400 mb-3" />
               <p className="text-gray-600 mb-4">
-                Puja un fitxer CSV amb les columnes: crotal_id, dib, data_naixement, sexe
+                Puja un fitxer CSV amb les columnes: dib, data_naixement, sexe (i opcionalment lot_nom)
               </p>
               <input
                 ref={inputFileRef}
@@ -165,10 +165,10 @@ export function ModalAltaMassiva({ onTancar, onImportacioCompletada }: ModalAlta
                     <thead className="sticky top-0 bg-gray-50">
                       <tr className="text-left text-gray-500">
                         <th className="px-3 py-2 font-medium"></th>
-                        <th className="px-3 py-2 font-medium">Crotal</th>
                         <th className="px-3 py-2 font-medium">DIB</th>
                         <th className="px-3 py-2 font-medium">Naixement</th>
                         <th className="px-3 py-2 font-medium">Sexe</th>
+                        <th className="px-3 py-2 font-medium">Lot</th>
                         <th className="px-3 py-2 font-medium">Estat</th>
                       </tr>
                     </thead>
@@ -185,10 +185,10 @@ export function ModalAltaMassiva({ onTancar, onImportacioCompletada }: ModalAlta
                               />
                             )}
                           </td>
-                          <td className="px-3 py-1.5 text-gray-900">{f.dades.crotal_id}</td>
-                          <td className="px-3 py-1.5 text-gray-600">{f.dades.dib || '—'}</td>
+                          <td className="px-3 py-1.5 text-gray-900">{f.dades.dib}</td>
                           <td className="px-3 py-1.5 text-gray-600">{f.dades.data_naixement || '—'}</td>
                           <td className="px-3 py-1.5 text-gray-600">{f.dades.sexe || '—'}</td>
+                          <td className="px-3 py-1.5 text-gray-600">{f.dades.lot_nom || '—'}</td>
                           <td className="px-3 py-1.5 text-xs text-gray-600">
                             {ESTAT_ETIQUETA[f.estat]}
                             {f.errors.length > 0 && f.estat === 'error' && (
@@ -229,7 +229,10 @@ export function ModalAltaMassiva({ onTancar, onImportacioCompletada }: ModalAlta
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Lot</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Lot per defecte
+                      <span className="font-normal text-gray-400"> (les files amb lot propi l&apos;ignoren)</span>
+                    </label>
                     <div className="flex gap-2 mb-2">
                       <button
                         type="button"

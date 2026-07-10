@@ -8,12 +8,12 @@ type CercadorRapidProps = {
 
 /**
  * Cercador en temps real per a la graella d'animals.
- * Filtra per crotal a mesura que l'usuari escriu.
+ * Filtra pel DIB a mesura que l'usuari escriu.
  */
 export function CercadorRapid({
   valor,
   onChange,
-  placeholder = 'Cercar per crotal...',
+  placeholder = 'Cercar per DIB...',
 }: CercadorRapidProps) {
   return (
     <input

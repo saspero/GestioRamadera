@@ -185,13 +185,13 @@ export async function getAnimalsEnSupressio(
 ): Promise<AnimalEnSupressioBlock[]> {
   const rows = await queryTenant<{
     animalId: number
-    crotalId: string
+    dib: string
     nomMedicament: string
     dataAlliberament: string
     diesRestants: string
   }>(
     ctx,
-    `SELECT animal_id AS "animalId", crotal_id AS "crotalId",
+    `SELECT animal_id AS "animalId", dib,
             nom_medicament AS "nomMedicament",
             data_alliberament AS "dataAlliberament",
             dies_restants_supressio AS "diesRestants"
@@ -217,12 +217,12 @@ export async function getUltimesBaixes(
 ): Promise<BaixaRecentBlock[]> {
   const rows = await queryTenant<{
     animalId: number
-    crotalId: string
+    dib: string
     motiu: 'Venda' | 'Mort'
     dataBaixa: string
   }>(
     ctx,
-    `SELECT b.animal_id AS "animalId", a.crotal_id AS "crotalId",
+    `SELECT b.animal_id AS "animalId", a.dib,
             b.motiu, b.data_baixa AS "dataBaixa"
      FROM baixes b
      JOIN animals a ON a.id = b.animal_id

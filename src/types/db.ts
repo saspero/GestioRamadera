@@ -27,10 +27,13 @@ export type User = {
   darrerAcces:  Date | null
 }
 
+/**
+ * @remarks `dib` és l'únic identificador de l'animal — el DIB i el
+ * crotal físic a l'orella són la mateixa dada.
+ */
 export type Animal = {
   id:            number
-  crotalId:      string
-  dib:           string | null
+  dib:           string
   racaId:        number | null
   dataNaixement: Date | null
   estatSalut:    EstatSalut
@@ -51,11 +54,13 @@ export type Animal = {
  * present a v_animals_actius ja té estat_actiu = TRUE. Prometre
  * aquests camps aquí donaria una falsa sensació de tipatge complet
  * quan en realitat mai arriben del backend.
+ * @remarks `dib` és l'únic identificador de l'animal — el DIB
+ * (Document d'Identificació Bovina) i el crotal físic a l'orella són
+ * la mateixa dada, no dos camps separats.
  */
 export type AnimalActiu = {
   id:            number
-  crotalId:      string
-  dib:           string | null
+  dib:           string
   nomRaca:       string | null
   dataNaixement: Date | null
   estatSalut:    EstatSalut

@@ -25,7 +25,7 @@ export function AnimalsEnSupressioList({ dades }: { dades: AnimalEnSupressioBloc
           {dades.map((a) => (
             <li key={a.animalId} className="flex items-center justify-between text-sm">
               <span className="text-gray-700">
-                <strong>{a.crotalId}</strong> — {a.nomMedicament}
+                <strong>{a.dib}</strong> — {a.nomMedicament}
               </span>
               <span className="text-amber-700 font-medium">
                 {a.diesRestants} {a.diesRestants === 1 ? 'dia' : 'dies'}
