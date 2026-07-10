@@ -35,10 +35,12 @@
 | **Animals — Alta individual** | ✅ | ✅ | ❌ |
 | **Animals — Alta massiva CSV** | ✅ | ❌ | ❌ |
 | **Animals — Baixa (venda/mort)** | ✅ | ❌ | ❌ |
+| **Animals — Selecció múltiple / Moure a lot** | ✅ | ✅ | ❌ |
 | **Granja/Corts — Consulta** | ✅ | ✅ | 📖 |
 | **Granja/Corts — Crear/editar granges, zones i corts** | ✅ | ✅ | ❌ |
-| **Lots — Consulta** | ✅ | ✅ | 📖 |
-| **Lots — Crear lots / moure animals** | ✅ | ✅ | ❌ |
+| **Lots — Consulta i detall d'animals** | ✅ | ✅ | 📖 |
+| **Lots — Crear lots** | ✅ | ✅ | ❌ |
+| **Lots — Moure animals entre lots** | ✅ | ✅ | ❌ |
 | **Mòdul Sanitari — Tractaments** | ✅ | ✅ | ❌ |
 | **Mòdul Sanitari — Magatzem fàrmacs** | ✅ | ✅ | ❌ |
 | **Mòdul Sanitari — Càrrega CSV fàrmacs** | ✅ | ✅ | ❌ |

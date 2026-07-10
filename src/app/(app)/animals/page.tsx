@@ -9,24 +9,23 @@ import { useSessio } from '@/lib/session/SessioContext'
 import type { AnimalActiu } from '@/types/db'
 
 /**
- * Pàgina del llistat d'animals actius, amb cercador, alta massiva i
- * alta individual.
+ * Pàgina del llistat d'animals actius, amb cercador, alta massiva,
+ * alta individual, i selecció múltiple per moure animals a un altre lot.
  *
  * Abast d'aquesta versió (docs/08_modul_llistat_actius.md):
- * llistat + cercador + alta massiva per CSV + alta individual.
- * L'edició ràpida de mètriques a la graella (secció 2.3-2.4) i les
- * accions massives de lot/cort (secció 3) queden per a una iteració
- * posterior.
+ * llistat + cercador + alta massiva per CSV + alta individual +
+ * moviment de lot des de la taula (docs/14_modul_lots.md). L'edició
+ * ràpida de mètriques a la graella (secció 2.3-2.4) i el selector de
+ * vista Per Cort/Per Lot queden per a una iteració posterior.
  *
- * @returns Pàgina d'animals amb taula, cercador i modals d'alta
+ * @returns Pàgina d'animals amb taula, cercador i modals d'alta i moviment
  *
  * @remarks Control d'accés: el llistat és visible per als 3 rols.
- * El botó d'alta massiva només es mostra per a Admin. El botó d'alta
- * individual es mostra per a Admin i Veterinari (ampliació sobre el
- * disseny original — docs/08_modul_llistat_actius.md, secció 5).
- * Llegit via useSessio() (context ja resolt al servidor pel JWT).
- * Aquesta comprovació és només visual: els endpoints tornen a validar
- * el rol igualment — defensa en profunditat.
+ * El botó d'alta massiva només per a Admin. El d'alta individual i
+ * la selecció múltiple/moviment de lot per a Admin i Veterinari
+ * (ampliació sobre el disseny original). Llegit via useSessio().
+ * Aquesta comprovació és només visual: els endpoints tornen a
+ * validar el rol igualment — defensa en profunditat.
  * @remarks Multitenancy: no toca la BD directament; tota la lectura
  * passa per GET /api/animals, que aplica el search_path del tenant.
  */
@@ -70,6 +69,7 @@ export default function AnimalsPage() {
   }
 
   const potDonarAltaIndividual = rol === 'Admin' || rol === 'Veterinari'
+  const potMoure = rol === 'Admin' || rol === 'Veterinari'
 
   return (
     <div className="space-y-4">
@@ -104,6 +104,8 @@ export default function AnimalsPage() {
         cerca={cerca}
         onCercaChange={setCerca}
         carregant={carregant}
+        potMoure={potMoure}
+        onAnimalsMoguts={() => carregarAnimals(cerca)}
       />
 
       {modalMassivaObert && (
