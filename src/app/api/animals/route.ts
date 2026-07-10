@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { TenantContext, Rol } from '@/lib/db/client'
-import { getAnimalsActius, cercarPerCrotal } from '@/lib/db/queries/animals'
+import { getAnimalsActius, cercarPerDib } from '@/lib/db/queries/animals'
 
 /**
  * GET /api/animals
  *
  * Retorna el llistat d'animals actius. Si es passa el paràmetre de
- * consulta `cerca`, filtra per coincidència parcial de crotal_id.
+ * consulta `cerca`, filtra per coincidència parcial del DIB.
  *
  * @param request - Petició entrant; el middleware ja hi ha afegit les
  * capçaleres x-user-id, x-tenant-schema i x-user-rol a partir del JWT.
@@ -17,7 +17,7 @@ import { getAnimalsActius, cercarPerCrotal } from '@/lib/db/queries/animals'
  * @remarks Control d'accés: lectura oberta als 3 rols (Admin,
  * Veterinari, Treballador) — docs/08_modul_llistat_actius.md,
  * secció "Rols amb accés".
- * @remarks Multitenancy: delega a getAnimalsActius/cercarPerCrotal
+ * @remarks Multitenancy: delega a getAnimalsActius/cercarPerDib
  * (src/lib/db/queries/animals.ts), que apliquen SET LOCAL search_path
  * al schema del tenant via queryTenant().
  */
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const cerca = request.nextUrl.searchParams.get('cerca')?.trim()
-    const animals = cerca ? await cercarPerCrotal(ctx, cerca) : await getAnimalsActius(ctx)
+    const animals = cerca ? await cercarPerDib(ctx, cerca) : await getAnimalsActius(ctx)
     return NextResponse.json({ animals })
   } catch (error) {
     console.error('[GET /api/animals]', error)

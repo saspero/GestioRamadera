@@ -1,25 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import type { TenantContext, Rol } from '@/lib/db/client'
-import { trobarCrotalsExistents } from '@/lib/db/queries/animals'
+import { trobarDibsExistents } from '@/lib/db/queries/animals'
 
 const comprovarSchema = z.object({
-  crotals: z.array(z.string().trim().min(1)).min(1).max(1000),
+  dibs: z.array(z.string().trim().min(1)).min(1).max(1000),
 })
 
 /**
  * POST /api/animals/comprovar-duplicats
  *
- * Rep una llista de crotal_id (extrets del CSV al client) i retorna
- * quins ja existeixen a la base de dades, per marcar-los a la
- * pantalla de previsualització de l'alta massiva.
+ * Rep una llista de DIB (extrets del CSV al client) i retorna quins
+ * ja existeixen a la base de dades, per marcar-los a la pantalla de
+ * previsualització de l'alta massiva.
  *
- * @param request - Body: { crotals: string[] }
+ * @param request - Body: { dibs: string[] }
  * @returns JSON { existents: string[] }, o 401/403 segons correspongui
  *
  * @remarks Control d'accés: Admin únicament (mateix àmbit que
  * l'alta massiva en si).
- * @remarks Multitenancy: delega a trobarCrotalsExistents
+ * @remarks Multitenancy: delega a trobarDibsExistents
  * (src/lib/db/queries/animals.ts), aïllada via queryTenant/search_path.
  */
 export async function POST(request: NextRequest) {
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Dades incorrectes' }, { status: 400 })
     }
 
-    const existents = await trobarCrotalsExistents(ctx, parsed.data.crotals)
+    const existents = await trobarDibsExistents(ctx, parsed.data.dibs)
     return NextResponse.json({ existents })
   } catch (error) {
     console.error('[POST /api/animals/comprovar-duplicats]', error)

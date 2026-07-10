@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { TenantContext, Rol } from '@/lib/db/client'
 import { auditLog } from '@/lib/db/client'
-import { trobarCrotalsExistents, importarAnimalsMassiu } from '@/lib/db/queries/animals'
+import {
+  trobarDibsExistents,
+  resoldreLotsPerNom,
+  importarAnimalsMassiu,
+} from '@/lib/db/queries/animals'
 import { bulkImportSchema } from '@/lib/validators/animals'
 
 /**
@@ -17,10 +21,13 @@ import { bulkImportSchema } from '@/lib/validators/animals'
  * secció "Rols amb accés").
  * @remarks Multitenancy: delega a importarAnimalsMassiu
  * (src/lib/db/queries/animals.ts), aïllada via queryTenant/search_path.
- * @remarks Seguretat: revalida els crotal_id contra la BD just abans
+ * @remarks Seguretat: revalida els DIB contra la BD just abans
  * d'inserir (encara que el client ja els hagi comprovat a la
  * previsualització), per evitar condicions de carrera si dos Admins
- * importen simultàniament el mateix crotal — retorna 409 si en troba.
+ * importen simultàniament el mateix DIB — retorna 409 si en troba.
+ * @remarks Lot per fila: si una fila indica `lot_nom`, es resol (o
+ * es crea) abans de la importació i té prioritat sobre el lot per
+ * defecte de `assignacio` per a aquell animal concret.
  */
 export async function POST(request: NextRequest) {
   const ctx: TenantContext = {
@@ -50,22 +57,28 @@ export async function POST(request: NextRequest) {
     const { animals, assignacio } = parsed.data
 
     // Revalidació de duplicats contra la BD (defensa en profunditat)
-    const crotalIds = animals.map((a) => a.crotal_id)
-    const duplicats = await trobarCrotalsExistents(ctx, crotalIds)
+    const dibs = animals.map((a) => a.dib)
+    const duplicats = await trobarDibsExistents(ctx, dibs)
     if (duplicats.length > 0) {
       return NextResponse.json(
-        { error: 'Alguns crotals ja existeixen a la base de dades', duplicats },
+        { error: 'Alguns DIB ja existeixen a la base de dades', duplicats },
         { status: 409 }
       )
     }
 
+    // Resoldre els lots propis de fila (lot_nom), si n'hi ha
+    const nomsLotPerFila = animals
+      .map((a) => a.lot_nom?.trim())
+      .filter((nom): nom is string => !!nom)
+    const mapaLots = await resoldreLotsPerNom(ctx, nomsLotPerFila)
+
     const resultat = await importarAnimalsMassiu(
       ctx,
       animals.map((a) => ({
-        crotalId: a.crotal_id,
-        dib: a.dib || undefined,
+        dib: a.dib,
         dataNaixement: a.data_naixement || undefined,
         sexe: (a.sexe || undefined) as 'Mascle' | 'Femella' | undefined,
+        lotId: a.lot_nom?.trim() ? mapaLots.get(a.lot_nom.trim()) : undefined,
       })),
       assignacio
     )
