@@ -6,6 +6,26 @@
 
 ---
 
+## 0. Estat d'Implementació
+
+| Funcionalitat | Estat | Detall |
+|---|---|---|
+| Formulari de Consums Massius (secció 2) | ✅ Implementat | Formulari únic intel·ligent — veure 0.1 |
+| Lògica de bales (secció 2.2) | ✅ Implementat | Càlcul i mostra del pes equivalent abans de confirmar |
+| Control d'estocs i alertes jeràrquiques (secció 3) | ✅ Implementat | Càlcul NORMAL/BAIX/ESGOTAT amb llindar específic o global |
+| Gestió d'estats (toggle Actiu/Deshabilitat) (secció 4) | ✅ Implementat | Exclusiu d'Admin |
+| Pantalla de Control d'Estoc (secció 5) | ✅ Implementat | Amb barra visual de capacitat |
+
+### 0.1. Decisions ampliades sobre el disseny original
+
+- **Un únic formulari, dues taules:** el document defineix un sol formulari de "Consums Massius", però la BD té dues taules diferents (`consums_pinso_nau` per a sitges, `moviments_farratge` per a magatzems de farratge). El formulari detecta automàticament el tipus d'origen seleccionat i escriu a la taula corresponent, sense que l'usuari hagi de triar-la explícitament.
+- **Sitges: sempre en kg.** `consums_pinso_nau` no té camp d'unitat (a diferència de `moviments_farratge`). El desplegable d'unitat es restringeix automàticament a `kg` quan l'origen és una sitja, amagant `Tones` i `Unitats (bales)`.
+- **Rols mantinguts tal com al disseny original:** aquest és l'únic mòdul on Veterinari **no** té cap accés (ni lectura), a diferència de la resta de mòduls on s'ha ampliat a "només lectura". Decisió confirmada explícitament amb l'usuari.
+- **Estoc negatiu:** no es bloqueja el registre d'un consum si l'estoc quedaria negatiu (mateix criteri aplicat a Sanitari) — es mostra com a informació, no com a error bloquejant.
+- **v_estoc_magatzems no reutilitzada per a aquesta pantalla:** la vista existent (usada al Dashboard) filtra `WHERE estat = 'Actiu'`, pensada per a les alertes. La pantalla de Control d'Estoc necessita veure també els magatzems deshabilitats — s'ha creat una query pròpia amb la mateixa lògica de càlcul d'alerta, sense aquest filtre.
+
+---
+
 ## 1. Descripció General
 
 El Mòdul de Logística gestiona el flux d'aliments dins de la granja: des dels magatzems i sitges fins a les naus o zones de pastura on es consumeix. Inclou el registre de consums massius, el control d'estocs amb alertes jeràrquiques, i la gestió de l'estat operatiu dels espais d'emmagatzematge.
@@ -158,3 +178,14 @@ Vista de consulta que mostra l'estat actual de tots els espais d'emmagatzematge:
 | `public.audit_log` | Registre de moviments |
 
 > DDL complet a [`02_model_de_dades.md`](./02_model_de_dades.md), secció 3 (Logística).
+
+---
+
+### 7. Nous endpoints:
+
+| Endpoint | Mètode | Rol | Descripció |
+|---|---|---|---|
+| `/api/logistica/estoc` | GET | Admin, Treballador | Estoc complet (actius i deshabilitats) |
+| `/api/logistica/catalegs` | GET | Admin, Treballador | Orígens (actius) i destins per al formulari |
+| `/api/logistica/consum` | POST | Admin, Treballador | Registra un consum (dual-write segons origen) |
+| `/api/logistica/estoc/[tipus]/[id]` | PATCH | Admin | Canvia l'estat Actiu/Deshabilitat |
