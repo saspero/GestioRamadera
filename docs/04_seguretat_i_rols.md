@@ -36,6 +36,8 @@
 | **Animals — Alta massiva CSV** | ✅ | ❌ | ❌ |
 | **Animals — Baixa (venda/mort)** | ✅ | ❌ | ❌ |
 | **Animals — Selecció múltiple / Moure a lot** | ✅ | ✅ | ❌ |
+| **Animals — Fitxa de detall (consulta)** | ✅ | ✅ | 📖 |
+| **Animals — Donar de baixa des de la fitxa** | ✅ | ✅ | ❌ |
 | **Granja/Corts — Consulta** | ✅ | ✅ | 📖 |
 | **Granja/Corts — Crear/editar granges, zones i corts** | ✅ | ✅ | ❌ |
 | **Lots — Consulta i detall d'animals** | ✅ | ✅ | 📖 |

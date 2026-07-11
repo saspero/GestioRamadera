@@ -7,8 +7,10 @@ import { crearAnimalSchema } from '@/lib/validators/animals'
 /**
  * GET /api/animals
  *
- * Retorna el llistat d'animals actius. Si es passa el paràmetre de
- * consulta `cerca`, filtra per coincidència parcial del DIB.
+ * Retorna el llistat d'animals actius, amb tots els ids d'ubicació
+ * (granja, zona, lot) per al filtratge en cascada al client. Si es
+ * passa el paràmetre de consulta `cerca`, filtra per coincidència
+ * parcial del DIB.
  *
  * @param request - Petició entrant; el middleware ja hi ha afegit les
  * capçaleres x-user-id, x-tenant-schema i x-user-rol a partir del JWT.
@@ -16,12 +18,12 @@ import { crearAnimalSchema } from '@/lib/validators/animals'
  * @returns JSON { animals: AnimalActiu[] }, o 401 si no hi ha context
  * de tenant vàlid
  *
- * @remarks Control d'accés: lectura oberta als 3 rols (Admin,
- * Veterinari, Treballador) — docs/08_modul_llistat_actius.md,
- * secció "Rols amb accés".
+ * @remarks Control d'accés: lectura oberta als 3 rols.
  * @remarks Multitenancy: delega a getAnimalsActius/cercarPerDib
- * (src/lib/db/queries/animals.ts), que apliquen SET LOCAL search_path
- * al schema del tenant via queryTenant().
+ * (src/lib/db/queries/animals.ts), aïllades via queryTenant/search_path.
+ * @remarks El filtratge per Granja/Zona/Lot es fa AL CLIENT sobre
+ * aquestes dades ja carregades (docs/08_modul_llistat_actius.md) —
+ * no hi ha paràmetres addicionals de filtre en aquest endpoint.
  */
 export async function GET(request: NextRequest) {
   const ctx: TenantContext = {
@@ -47,22 +49,14 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/animals
  *
- * Dona d'alta un animal individual amb la seva distribució inicial
- * (lot + cort), fora del flux d'importació massiva.
+ * Dona d'alta un animal individual amb la seva distribució inicial.
  *
- * @param request - Body: CrearAnimalInput (dib, racaId?, dataNaixement?,
- * sexe?, lotId, cortId)
+ * @param request - Body: CrearAnimalInput
  * @returns JSON { id: number }, o error 400/401/403/409/500
  *
- * @remarks Control d'accés: Admin i Veterinari (docs/08_modul_llistat_actius.md,
- * secció 5 — ampliació respecte al disseny original, que només
- * contemplava Admin: un veterinari sovint és qui rep i registra un
- * animal nou durant una visita). Treballador NO hi té accés.
- * @remarks Multitenancy: delega a crearAnimalIndividual
- * (src/lib/db/queries/animals.ts), aïllada via queryTenant/search_path.
- * @remarks Seguretat: comprova explícitament que el DIB no existeixi
- * abans d'inserir, retornant 409 amb un missatge clar en comptes de
- * deixar que la constraint UNIQUE de la BD llenci un error genèric.
+ * @remarks Control d'accés: Admin i Veterinari.
+ * @remarks Multitenancy: delega a crearAnimalIndividual, aïllada via
+ * queryTenant/search_path.
  */
 export async function POST(request: NextRequest) {
   const ctx: TenantContext = {
@@ -102,8 +96,6 @@ export async function POST(request: NextRequest) {
         cortId,
       })
     } catch (dbError) {
-      // La constraint UNIQUE de animals.dib llança un error de PostgreSQL
-      // (codi 23505) si el DIB ja existeix — el traduïm a un 409 clar.
       const isDuplicat =
         dbError instanceof Error && dbError.message.includes('duplicate key')
       if (isDuplicat) {

@@ -1,37 +1,54 @@
 import { queryTenant, type TenantContext } from '../client'
 import type { AnimalActiu } from '@/types/db'
+import type { FiltresAnimals, FitxaAnimal } from '@/types/animals-extra'
 
 /**
- * Retorna tots els animals actius amb lot, cort, zona i edat calculada,
- * incloent si tenen bloqueig comercial actiu per període de supressió.
+ * Retorna tots els animals actius amb lot, cort, zona, ubicació i
+ * edat calculada, incloent els seus ids (per al filtratge en
+ * cascada) i si tenen bloqueig comercial actiu per supressió.
  *
  * @param ctx - Context del tenant (schema, usuari, rol)
- * @returns Array d'animals actius, ordenats per DIB
+ * @returns Array d'animals actius, ordenats pel DIB
  *
+ * @remarks Ja NO es basa en la vista v_animals_actius (que només
+ * exposava els NOMS de lot/cort/zona), sinó en un JOIN directe que
+ * exposa també els ids — necessaris per als desplegables de filtre
+ * Granja/Zona/Lot (docs/08_modul_llistat_actius.md).
  * @remarks Control d'accés: visible per als 3 rols (Admin, Veterinari,
- * Treballador) — el llistat en si no és sensible; les accions
- * d'edició es restringeixen a nivell d'endpoint, no de lectura.
+ * Treballador).
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function getAnimalsActius(ctx: TenantContext): Promise<AnimalActiu[]> {
   return queryTenant<AnimalActiu>(
     ctx,
     `SELECT
-       va.id,
-       va.dib,
-       va.nom_raca       AS "nomRaca",
-       va.data_naixement AS "dataNaixement",
-       va.estat_salut    AS "estatSalut",
-       va.sexe,
-       va.nom_lot        AS "nomLot",
-       va.codi_cort      AS "codiCort",
-       va.nom_zona       AS "nomZona",
-       va.data_entrada   AS "dataEntrada",
-       va.edat_dies      AS "edatDies",
+       a.id,
+       a.dib,
+       r.nom_raca       AS "nomRaca",
+       a.data_naixement AS "dataNaixement",
+       a.estat_salut    AS "estatSalut",
+       a.sexe,
+       l.nom_lot        AS "nomLot",
+       l.id             AS "lotId",
+       c.codi_cort      AS "codiCort",
+       c.id             AS "cortId",
+       z.nom            AS "nomZona",
+       z.id             AS "zonaId",
+       u.nom            AS "nomUbicacio",
+       u.id             AS "ubicacioId",
+       da.data_entrada  AS "dataEntrada",
+       (CURRENT_DATE - a.data_naixement) AS "edatDies",
        (s.animal_id IS NOT NULL) AS "enSupressio"
-     FROM v_animals_actius va
-     LEFT JOIN v_animals_en_supressio s ON s.animal_id = va.id
-     ORDER BY va.dib`
+     FROM animals a
+     LEFT JOIN distribucio_animals da ON da.animal_id = a.id AND da.data_sortida IS NULL
+     LEFT JOIN lots l                 ON l.id = da.lot_id
+     LEFT JOIN corts c                ON c.id = da.cort_id
+     LEFT JOIN zones_infraestructura z ON z.id = c.zona_id
+     LEFT JOIN ubicacions u           ON u.id = z.ubicacio_id
+     LEFT JOIN races_cataleg r        ON r.id = a.raca_id
+     LEFT JOIN v_animals_en_supressio s ON s.animal_id = a.id
+     WHERE a.estat_actiu = TRUE
+     ORDER BY a.dib`
   )
 }
 
@@ -43,7 +60,7 @@ export async function getAnimalsActius(ctx: TenantContext): Promise<AnimalActiu[
  * @returns Array d'animals que coincideixen, màxim 50 resultats
  *
  * @remarks Utilitza l'índex trigram idx_animals_dib_trgm per a
- * cerques ILIKE eficients (veure database/02_schema_tenant_template.sql).
+ * cerques ILIKE eficients.
  * @remarks Control d'accés: visible per als 3 rols.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
@@ -54,23 +71,177 @@ export async function cercarPerDib(
   return queryTenant<AnimalActiu>(
     ctx,
     `SELECT
-       id,
-       dib,
-       nom_raca       AS "nomRaca",
-       data_naixement AS "dataNaixement",
-       estat_salut    AS "estatSalut",
-       sexe,
-       nom_lot        AS "nomLot",
-       codi_cort      AS "codiCort",
-       nom_zona       AS "nomZona",
-       data_entrada   AS "dataEntrada",
-       edat_dies      AS "edatDies"
-     FROM v_animals_actius
-     WHERE dib ILIKE $1
-     ORDER BY dib
+       a.id,
+       a.dib,
+       r.nom_raca       AS "nomRaca",
+       a.data_naixement AS "dataNaixement",
+       a.estat_salut    AS "estatSalut",
+       a.sexe,
+       l.nom_lot        AS "nomLot",
+       l.id             AS "lotId",
+       c.codi_cort      AS "codiCort",
+       c.id             AS "cortId",
+       z.nom            AS "nomZona",
+       z.id             AS "zonaId",
+       u.nom            AS "nomUbicacio",
+       u.id             AS "ubicacioId",
+       da.data_entrada  AS "dataEntrada",
+       (CURRENT_DATE - a.data_naixement) AS "edatDies",
+       (s.animal_id IS NOT NULL) AS "enSupressio"
+     FROM animals a
+     LEFT JOIN distribucio_animals da ON da.animal_id = a.id AND da.data_sortida IS NULL
+     LEFT JOIN lots l                 ON l.id = da.lot_id
+     LEFT JOIN corts c                ON c.id = da.cort_id
+     LEFT JOIN zones_infraestructura z ON z.id = c.zona_id
+     LEFT JOIN ubicacions u           ON u.id = z.ubicacio_id
+     LEFT JOIN races_cataleg r        ON r.id = a.raca_id
+     LEFT JOIN v_animals_en_supressio s ON s.animal_id = a.id
+     WHERE a.estat_actiu = TRUE AND a.dib ILIKE $1
+     ORDER BY a.dib
      LIMIT 50`,
     [`%${terme}%`]
   )
+}
+
+/**
+ * Retorna els catàlegs necessaris per als desplegables de filtre en
+ * cascada (Granja → Zona → Lot) de la pantalla d'Animals.
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @returns Ubicacions, zones (amb el seu ubicacioId) i lots
+ *
+ * @remarks Control d'accés: visible per als 3 rols (necessari per
+ * mostrar els filtres, encara que el resultat sigui el mateix per
+ * a tots).
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function getFiltresAnimals(ctx: TenantContext): Promise<FiltresAnimals> {
+  const [ubicacions, zones, lots] = await Promise.all([
+    queryTenant<{ id: number; nom: string }>(
+      ctx,
+      `SELECT id, nom FROM ubicacions ORDER BY nom`
+    ),
+    queryTenant<{ id: number; nom: string; ubicacioId: number }>(
+      ctx,
+      `SELECT id, nom, ubicacio_id AS "ubicacioId"
+       FROM zones_infraestructura
+       WHERE tipus_zona = 'NAU_ANIMALS'
+       ORDER BY nom`
+    ),
+    queryTenant<{ id: number; nom: string }>(
+      ctx,
+      `SELECT id, nom_lot AS nom FROM lots ORDER BY nom_lot`
+    ),
+  ])
+  return { ubicacions, zones, lots }
+}
+
+/**
+ * Retorna la fitxa completa d'un animal: dades bàsiques, ubicació
+ * actual, historial de pesos i historial de tractaments.
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param animalId - Id de l'animal
+ * @returns Fitxa completa, o null si l'animal no existeix
+ *
+ * @remarks Control d'accés: visible per als 3 rols (consulta de
+ * només lectura; el botó de baixa es controla a l'endpoint de baixa,
+ * no aquí).
+ * @remarks Multitenancy: aïllat via queryTenant/search_path. Quatre
+ * consultes independents (dades bàsiques, ubicació, pesos,
+ * tractaments) en comptes d'un únic JOIN gegant, per simplicitat —
+ * el volum de files per animal és sempre baix.
+ */
+export async function getFitxaAnimal(
+  ctx: TenantContext,
+  animalId: number
+): Promise<FitxaAnimal | null> {
+  const basiques = await queryTenant<{
+    id: number
+    dib: string
+    nomRaca: string | null
+    dataNaixement: string | null
+    sexe: 'Mascle' | 'Femella' | null
+    estatSalut: 'Sa' | 'En tractament' | 'Observació' | 'Crític'
+    estatActiu: boolean
+    nomUbicacio: string | null
+    nomZona: string | null
+    codiCort: string | null
+    nomLot: string | null
+    dataEntradaLot: string | null
+    edatDies: number | null
+  }>(
+    ctx,
+    `SELECT
+       a.id,
+       a.dib,
+       r.nom_raca       AS "nomRaca",
+       a.data_naixement AS "dataNaixement",
+       a.sexe,
+       a.estat_salut    AS "estatSalut",
+       a.estat_actiu    AS "estatActiu",
+       u.nom            AS "nomUbicacio",
+       z.nom            AS "nomZona",
+       c.codi_cort      AS "codiCort",
+       l.nom_lot        AS "nomLot",
+       da.data_entrada  AS "dataEntradaLot",
+       (CURRENT_DATE - a.data_naixement) AS "edatDies"
+     FROM animals a
+     LEFT JOIN distribucio_animals da ON da.animal_id = a.id AND da.data_sortida IS NULL
+     LEFT JOIN lots l                 ON l.id = da.lot_id
+     LEFT JOIN corts c                ON c.id = da.cort_id
+     LEFT JOIN zones_infraestructura z ON z.id = c.zona_id
+     LEFT JOIN ubicacions u           ON u.id = z.ubicacio_id
+     LEFT JOIN races_cataleg r        ON r.id = a.raca_id
+     WHERE a.id = $1`,
+    [animalId]
+  )
+
+  if (basiques.length === 0) return null
+
+  const [historialPes, historialTractaments] = await Promise.all([
+    queryTenant<{ data: string; pesKg: string }>(
+      ctx,
+      `SELECT data, pes_kg AS "pesKg"
+       FROM registre_pes
+       WHERE animal_id = $1
+       ORDER BY data DESC`,
+      [animalId]
+    ),
+    queryTenant<{
+      id: number
+      nomMedicament: string
+      dataInici: string
+      dataAlliberament: string | null
+      dosiAplicada: string | null
+      unitatDosi: string | null
+      notes: string | null
+    }>(
+      ctx,
+      `SELECT
+         t.id,
+         m.nom_medicament   AS "nomMedicament",
+         t.data_inici       AS "dataInici",
+         t.data_alliberament AS "dataAlliberament",
+         t.dosi_aplicada    AS "dosiAplicada",
+         t.unitat_dosi      AS "unitatDosi",
+         t.notes
+       FROM tractaments t
+       JOIN medicaments m ON m.id = t.medicament_id
+       WHERE t.animal_id = $1
+       ORDER BY t.data_inici DESC`,
+      [animalId]
+    ),
+  ])
+
+  return {
+    ...basiques[0],
+    historialPes: historialPes.map((p) => ({ ...p, pesKg: Number(p.pesKg) })),
+    historialTractaments: historialTractaments.map((t) => ({
+      ...t,
+      dosiAplicada: t.dosiAplicada !== null ? Number(t.dosiAplicada) : null,
+    })),
+  }
 }
 
 /**
@@ -80,9 +251,7 @@ export async function cercarPerDib(
  * @param params - Animal, data i pes en kg
  * @returns Promise que es resol un cop desat el registre
  *
- * @remarks Control d'accés: Admin i Treballador (docs/04_seguretat_i_rols.md,
- * secció 2.2 — "Llistat actius: lectura+creació" per a Treballador).
- * La comprovació de rol es fa a l'endpoint, no aquí.
+ * @remarks Control d'accés: Admin i Treballador.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function registrarPes(
@@ -104,9 +273,6 @@ export async function registrarPes(
  * @param dibs - Llista de DIB a comprovar
  * @returns Array només amb els DIB que ja existeixen
  *
- * @remarks Utilitzat pel pas de previsualització de l'alta massiva
- * (docs/08_modul_llistat_actius.md, secció 4.3) per marcar files en
- * taronja quan el DIB ja és a la BD, sense bloquejar la importació.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function trobarDibsExistents(
@@ -128,8 +294,6 @@ export async function trobarDibsExistents(
  * @param ctx - Context del tenant (schema, usuari, rol)
  * @returns Array de races ordenades alfabèticament
  *
- * @remarks Control d'accés: lectura oberta als 3 rols (necessari per
- * mostrar la raça a la graella, encara que només Admin la pugui triar).
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function getRacesCataleg(
@@ -149,8 +313,6 @@ export async function getRacesCataleg(
  * @param ctx - Context del tenant (schema, usuari, rol)
  * @returns Array de lots ordenats pel més recent primer
  *
- * @remarks Control d'accés: Admin (només es fa servir al flux d'altes,
- * restringit a Admin segons docs/08_modul_llistat_actius.md).
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function getLots(
@@ -169,7 +331,6 @@ export async function getLots(
  * @param ctx - Context del tenant (schema, usuari, rol)
  * @returns Array de corts amb el nom de zona per a context visual
  *
- * @remarks Control d'accés: Admin.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function getCorts(
@@ -191,13 +352,8 @@ export async function getCorts(
  * @param params - Dades de l'animal i la seva ubicació inicial
  * @returns L'id de l'animal creat
  *
- * @remarks Control d'accés: Admin únicament (docs/08_modul_llistat_actius.md,
- * secció 5). Comprovat a l'endpoint.
- * @remarks Multitenancy: aïllat via queryTenant/search_path. Ambdós
- * INSERTs (animals + distribucio_animals) s'executen dins la mateixa
- * crida a queryTenant, que ja embolcalla en una transacció BEGIN/COMMIT
- * (veure src/lib/db/client.ts) — si el segon INSERT fallés, el primer
- * es desfaria també.
+ * @remarks Control d'accés: Admin i Veterinari. Comprovat a l'endpoint.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function crearAnimalIndividual(
   ctx: TenantContext,
@@ -238,16 +394,9 @@ export async function crearAnimalIndividual(
  * Resol un conjunt de noms de lot a IDs, creant els que no existeixin.
  *
  * @param ctx - Context del tenant (schema, usuari, rol)
- * @param nomsLot - Noms de lot únics a resoldre (buit si cap fila en té)
- * @returns Mapa nom de lot → id (existent o acabat de crear)
+ * @param nomsLot - Noms de lot únics a resoldre
+ * @returns Mapa nom de lot → id
  *
- * @remarks Utilitzat pel flux d'alta massiva quan les files del CSV
- * indiquen un `lot_nom` propi (docs/08_modul_llistat_actius.md,
- * secció 4.2 — ampliació de lot opcional per fila). Cada nom nou
- * es crea com un lot independent; si dues files diferents demanen
- * el mateix nom encara inexistent, es crea un únic lot compartit.
- * @remarks Control d'accés: Admin únicament (cridada només des del
- * flux d'alta massiva). Comprovat a l'endpoint.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function resoldreLotsPerNom(
@@ -287,19 +436,13 @@ export async function resoldreLotsPerNom(
  *
  * @param ctx - Context del tenant (schema, usuari, rol)
  * @param animals - Files ja validades del CSV; `lotId` opcional per fila
- * @param assignacio - Raça, lot per defecte (existent o nou) i cort de destí
+ * @param assignacio - Raça, lot per defecte i cort de destí
  * @returns Nombre d'animals creats
  *
  * @remarks Control d'accés: Admin únicament. Comprovat a l'endpoint.
- * @remarks Multitenancy: aïllat via queryTenant/search_path. Cada
- * crida a queryTenant s'executa dins la seva pròpia transacció
- * BEGIN/COMMIT (veure src/lib/db/client.ts). Si es crea un lot nou,
- * es fa en una query prèvia i separada per mantenir el SQL principal
- * simple i explícit.
- * @remarks Lot per fila: si una fila del CSV especifica `lotId`,
- * aquest té prioritat sobre el lot per defecte de `assignacio` per a
- * aquell animal concret (docs/08_modul_llistat_actius.md, secció 4.2
- * — ampliació: el lot per defecte és opcional de sobreescriure per fila).
+ * @remarks Multitenancy: aïllat via queryTenant/search_path. Una
+ * única transacció: si qualsevol INSERT falla, tot es desfà.
+ * L'aparellament animal↔lot es fa per dib (únic dins la transacció).
  */
 export async function importarAnimalsMassiu(
   ctx: TenantContext,
@@ -311,8 +454,6 @@ export async function importarAnimalsMassiu(
   }[],
   assignacio: { racaId: number; lotId: number | null; lotNouNom: string | null; cortId: number }
 ): Promise<{ nombreCreats: number }> {
-  // Pas 1: resoldre el lot de destí PER DEFECTE (existent o crear-ne un de nou).
-  // Les files amb lotId propi ignoren aquest valor.
   let lotPerDefecte = assignacio.lotId
   if (lotPerDefecte === null) {
     if (!assignacio.lotNouNom) {
@@ -326,22 +467,11 @@ export async function importarAnimalsMassiu(
     lotPerDefecte = lotRows[0].id
   }
 
-  // Pas 2: inserir tots els animals + les seves distribucions inicials.
-  // lotsFinals aplica el lot propi de la fila si en té, o el per defecte.
   const dibs = animals.map((a) => a.dib)
   const datesNaixement = animals.map((a) => a.dataNaixement ?? null)
   const sexes = animals.map((a) => a.sexe ?? null)
   const lotsFinals = animals.map((a) => a.lotId ?? lotPerDefecte)
 
-  // Una única query amb CTEs encadenades, dins la mateixa transacció
-  // que aplica queryTenant() — si qualsevol INSERT falla, tot es desfà
-  // (atomicitat completa: lot nou + animals + distribucions, o res).
-  // L'aparellament animal↔lot es fa per `dib` (no per ordre/posició,
-  // que PostgreSQL no garanteix entre un INSERT...SELECT i el seu
-  // RETURNING quan hi ha CTEs pel mig). És segur perquè dins d'aquesta
-  // mateixa transacció cada dib del bloc és necessàriament únic: ja
-  // validat sense duplicats interns (Zod) i sense duplicats contra la
-  // BD (trobarDibsExistents, cridat abans a l'endpoint bulk-import).
   const rows = await queryTenant<{ animal_id: number; lot_id: number }>(
     ctx,
     `WITH files AS (
@@ -356,9 +486,6 @@ export async function importarAnimalsMassiu(
        ORDER BY f.ordinality
        RETURNING id, dib
      ),
-     -- Reaparellem per dib (UNIQUE a la BD i validat sense duplicats
-     -- abans d'arribar aquí) per assignar el lot correcte a cada animal
-     -- creat, sense dependre de cap ordre implícit d'execució.
      animals_amb_lot AS (
        SELECT na.id AS animal_id, f.lot_id
        FROM nous_animals na

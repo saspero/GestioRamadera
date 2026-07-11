@@ -1,11 +1,13 @@
 'use client'
 
-import { useState } from 'react'
-import { ArrowRightLeft } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { ArrowRightLeft, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { formatNumber } from '@/lib/format'
 import { CercadorRapid } from '@/components/shared/CercadorRapid'
 import { IndicadorSupressio } from '@/components/shared/IndicadorSupressio'
 import { ModalMoureAnimals } from '@/components/lots/ModalMoureAnimals'
+import { FiltresAnimalsSelector, type ValorsFiltre } from '@/components/animals/FiltresAnimalsSelector'
+import { FitxaAnimalModal } from '@/components/animals/FitxaAnimalModal'
 import type { AnimalActiu, EstatSalut } from '@/types/db'
 
 const COLORS_SALUT: Record<EstatSalut, string> = {
@@ -15,40 +17,45 @@ const COLORS_SALUT: Record<EstatSalut, string> = {
   Crític: 'bg-red-100 text-red-700',
 }
 
+type ColumnaOrdenable = 'dib' | 'nomRaca' | 'nomLot' | 'estatSalut' | 'edatDies'
+type DireccioOrdre = 'asc' | 'desc'
+
 type TaulaAnimalsProps = {
   animals: AnimalActiu[]
   cerca: string
   onCercaChange: (valor: string) => void
   carregant: boolean
-  /** Si false (rol Treballador), s'amaga la selecció múltiple i l'acció de moure. */
+  /** Si false (rol Treballador), s'amaguen la selecció múltiple, l'acció de moure, i el botó de baixa a la fitxa. */
   potMoure: boolean
-  /** Callback cridat després d'un moviment amb èxit, per recarregar el llistat. */
+  /** Callback cridat després d'un moviment o una baixa amb èxit, per recarregar el llistat. */
   onAnimalsMoguts: () => void
 }
 
 /**
- * Taula del llistat d'animals actius amb cercador ràpid i, si el rol
- * ho permet, selecció múltiple per moure animals a un altre lot.
+ * Taula del llistat d'animals actius amb cercador, filtres en
+ * cascada (Granja/Zona/Lot), ordenació de columnes, selecció
+ * múltiple per moure a un lot, i obertura de la fitxa completa en
+ * clicar una fila.
  *
- * @param props.animals - Animals a mostrar (ja filtrats pel backend si hi ha cerca)
- * @param props.cerca - Valor actual del cercador
+ * @param props.animals - Animals a mostrar (ja filtrats pel backend si hi ha cerca de text)
+ * @param props.cerca - Valor actual del cercador de DIB
  * @param props.onCercaChange - Callback en canviar el text de cerca
  * @param props.carregant - Indica si s'està carregant una nova cerca
- * @param props.potMoure - Si true, mostra checkboxes i el botó "Moure a lot"
- * @param props.onAnimalsMoguts - Callback per recarregar després d'un moviment
- * @returns Taula responsive amb el llistat d'animals
+ * @param props.potMoure - Si true, mostra checkboxes, "Moure a lot" i el botó de baixa a la fitxa
+ * @param props.onAnimalsMoguts - Callback per recarregar després d'un moviment o una baixa
+ * @returns Taula responsive amb filtres, ordenació i fitxa d'animal
  *
  * @remarks Control d'accés: el llistat és visible per als 3 rols.
- * La selecció múltiple i el moviment de lot només per a Admin i
- * Veterinari (docs/14_modul_lots.md) — comprovació només visual, el
- * ModalMoureAnimals i el seu endpoint tornen a validar el rol.
+ * La selecció múltiple, el moviment de lot i el botó de baixa a la
+ * fitxa només per a Admin i Veterinari — comprovació només visual,
+ * els endpoints corresponents tornen a validar el rol.
+ * @remarks Filtres Granja/Zona/Lot i ordenació de columnes: es fan
+ * ÍNTEGRAMENT AL CLIENT sobre les dades ja carregades — no generen
+ * cap petició addicional al backend (docs/08_modul_llistat_actius.md).
  * @remarks Multitenancy: no toca la BD directament; rep les dades
  * ja carregades des de la pàgina pare via GET /api/animals. El
- * moviment passa per ModalMoureAnimals, component compartit amb el
- * mòdul Lots (src/components/lots/ModalMoureAnimals.tsx).
- * @remarks Abast pendent: edició ràpida de pes/llet a la graella
- * (Intro/Tab) i el selector de vista Per Cort/Per Lot encara no
- * estan implementats (docs/08_modul_llistat_actius.md, secció 0).
+ * moviment i la baixa passen per components compartits amb altres
+ * mòduls (ModalMoureAnimals, FitxaAnimalModal → ModalBaixa).
  */
 export function TaulaAnimals({
   animals,
@@ -60,6 +67,48 @@ export function TaulaAnimals({
 }: TaulaAnimalsProps) {
   const [seleccionats, setSeleccionats] = useState<Set<number>>(new Set())
   const [modalMoureObert, setModalMoureObert] = useState(false)
+  const [filtres, setFiltres] = useState<ValorsFiltre>({
+    ubicacioId: null,
+    zonaId: null,
+    lotId: null,
+  })
+  const [ordre, setOrdre] = useState<{ columna: ColumnaOrdenable; direccio: DireccioOrdre } | null>(null)
+  const [animalObertId, setAnimalObertId] = useState<number | null>(null)
+
+  const animalsFiltrats = useMemo(() => {
+    return animals.filter((a) => {
+      if (filtres.ubicacioId !== null && a.ubicacioId !== filtres.ubicacioId) return false
+      if (filtres.zonaId !== null && a.zonaId !== filtres.zonaId) return false
+      if (filtres.lotId !== null && a.lotId !== filtres.lotId) return false
+      return true
+    })
+  }, [animals, filtres])
+
+  const animalsOrdenats = useMemo(() => {
+    if (!ordre) return animalsFiltrats
+    const factor = ordre.direccio === 'asc' ? 1 : -1
+    return [...animalsFiltrats].sort((a, b) => {
+      const va = a[ordre.columna]
+      const vb = b[ordre.columna]
+      if (va === null) return 1
+      if (vb === null) return -1
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * factor
+      return String(va).localeCompare(String(vb)) * factor
+    })
+  }, [animalsFiltrats, ordre])
+
+  function handleOrdenar(columna: ColumnaOrdenable) {
+    setOrdre((prev) => {
+      if (prev?.columna !== columna) return { columna, direccio: 'asc' }
+      if (prev.direccio === 'asc') return { columna, direccio: 'desc' }
+      return null
+    })
+  }
+
+  function IconaOrdre({ columna }: { columna: ColumnaOrdenable }) {
+    if (ordre?.columna !== columna) return <ArrowUpDown size={12} className="text-gray-300" />
+    return ordre.direccio === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+  }
 
   function toggleSeleccio(animalId: number) {
     setSeleccionats((prev) => {
@@ -71,7 +120,9 @@ export function TaulaAnimals({
 
   function toggleSeleccioTots() {
     setSeleccionats((prev) =>
-      prev.size === animals.length ? new Set() : new Set(animals.map((a) => a.id))
+      prev.size === animalsOrdenats.length
+        ? new Set()
+        : new Set(animalsOrdenats.map((a) => a.id))
     )
   }
 
@@ -81,26 +132,37 @@ export function TaulaAnimals({
     onAnimalsMoguts()
   }
 
+  const capçaleres: { key: ColumnaOrdenable; label: string; alinea?: 'right' }[] = [
+    { key: 'dib', label: 'DIB' },
+    { key: 'nomRaca', label: 'Raça' },
+    { key: 'nomLot', label: 'Lot / Cort' },
+    { key: 'estatSalut', label: 'Estat de salut' },
+    { key: 'edatDies', label: 'Edat (dies)', alinea: 'right' },
+  ]
+
   return (
     <div className="bg-white rounded-lg border border-gray-200">
-      <div className="p-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <CercadorRapid
-            valor={cerca}
-            onChange={onCercaChange}
-            placeholder="Cercar per DIB..."
-          />
+      <div className="p-4 border-b border-gray-100 space-y-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-[200px]">
+            <CercadorRapid
+              valor={cerca}
+              onChange={onCercaChange}
+              placeholder="Cercar per DIB..."
+            />
+          </div>
+          {potMoure && seleccionats.size > 0 && (
+            <button
+              onClick={() => setModalMoureObert(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-primary-600 hover:bg-primary-700
+                         text-white font-medium rounded-lg min-h-[40px]"
+            >
+              <ArrowRightLeft size={16} aria-hidden="true" />
+              Moure {seleccionats.size === 1 ? '1 animal' : `${seleccionats.size} animals`} a un lot
+            </button>
+          )}
         </div>
-        {potMoure && seleccionats.size > 0 && (
-          <button
-            onClick={() => setModalMoureObert(true)}
-            className="flex items-center gap-2 px-3 py-2 text-sm bg-primary-600 hover:bg-primary-700
-                       text-white font-medium rounded-lg min-h-[40px]"
-          >
-            <ArrowRightLeft size={16} aria-hidden="true" />
-            Moure {seleccionats.size === 1 ? '1 animal' : `${seleccionats.size} animals`} a un lot
-          </button>
-        )}
+        <FiltresAnimalsSelector valors={filtres} onChange={setFiltres} />
       </div>
 
       <div className="overflow-x-auto">
@@ -111,17 +173,23 @@ export function TaulaAnimals({
                 <th className="px-4 py-2 w-8">
                   <input
                     type="checkbox"
-                    checked={animals.length > 0 && seleccionats.size === animals.length}
+                    checked={animalsOrdenats.length > 0 && seleccionats.size === animalsOrdenats.length}
                     onChange={toggleSeleccioTots}
                     aria-label="Seleccionar tots"
                   />
                 </th>
               )}
-              <th className="px-4 py-2 font-medium">DIB</th>
-              <th className="px-4 py-2 font-medium">Raça</th>
-              <th className="px-4 py-2 font-medium">Lot / Cort</th>
-              <th className="px-4 py-2 font-medium">Estat de salut</th>
-              <th className="px-4 py-2 font-medium text-right">Edat (dies)</th>
+              {capçaleres.map((c) => (
+                <th key={c.key} className={`px-4 py-2 font-medium ${c.alinea === 'right' ? 'text-right' : ''}`}>
+                  <button
+                    onClick={() => handleOrdenar(c.key)}
+                    className={`inline-flex items-center gap-1 hover:text-gray-900 ${c.alinea === 'right' ? 'flex-row-reverse' : ''}`}
+                  >
+                    {c.label}
+                    <IconaOrdre columna={c.key} />
+                  </button>
+                </th>
+              ))}
               <th className="px-4 py-2 font-medium"></th>
             </tr>
           </thead>
@@ -132,17 +200,21 @@ export function TaulaAnimals({
                   Carregant...
                 </td>
               </tr>
-            ) : animals.length === 0 ? (
+            ) : animalsOrdenats.length === 0 ? (
               <tr>
                 <td colSpan={potMoure ? 7 : 6} className="px-4 py-6 text-center text-gray-500">
                   {cerca ? 'Cap animal coincideix amb la cerca.' : 'No hi ha animals actius.'}
                 </td>
               </tr>
             ) : (
-              animals.map((animal) => (
-                <tr key={animal.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+              animalsOrdenats.map((animal) => (
+                <tr
+                  key={animal.id}
+                  className="border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer"
+                  onClick={() => setAnimalObertId(animal.id)}
+                >
                   {potMoure && (
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={seleccionats.has(animal.id)}
@@ -184,6 +256,15 @@ export function TaulaAnimals({
           animalIds={Array.from(seleccionats)}
           onTancar={() => setModalMoureObert(false)}
           onMogut={handleMogut}
+        />
+      )}
+
+      {animalObertId !== null && (
+        <FitxaAnimalModal
+          animalId={animalObertId}
+          potDonarBaixa={potMoure}
+          onTancar={() => setAnimalObertId(null)}
+          onBaixaRegistrada={onAnimalsMoguts}
         />
       )}
     </div>

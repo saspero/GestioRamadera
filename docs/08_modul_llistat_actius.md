@@ -29,6 +29,11 @@ El disseny original (secció 5) reservava l'alta individual exclusivament a Admi
 | Selector de vista Per Cort / Per Lot (secció 2.2) | ❌ Pendent | Ara mateix només "Tots els actius" |
 | Edició ràpida de mètriques a la graella (secció 2.3-2.4) | ❌ Pendent | Pes/llet amb Intro/Tab, offline |
 | Selecció múltiple i accions massives (secció 3) | ❌ Pendent | Canviar lot, dividir lot, assignar cort |
+| Filtres en cascada Granja → Zona → Lot | ✅ Implementat | Desplegables independents, filtratge 100% al client sobre dades ja carregades |
+| Ordenació de columnes (DIB, raça, lot, estat salut, edat) | ✅ Implementat | Client-side, sense peticions addicionals al servidor |
+| Fitxa completa d'un animal (modal) | ✅ Implementat | Dades bàsiques, ubicació, historial de pesos, historial de tractaments |
+| Donar de baixa des de la fitxa (venda/mort) | ✅ Implementat | Reutilitza exactament els camps de docs/07_modul_arxiu_historic.md |
+
 
 ---
 
@@ -177,6 +182,23 @@ Botó **"Alta individual"**, visible per a **Admin i Veterinari**, a la pantalla
 
 ---
 
+### 5b. Filtres, Ordenació i Fitxa de Detall
+
+**Filtres en cascada:** Tres desplegables independents (Granja, Nau, Lot) sobre la taula d'animals actius. El filtratge es fa íntegrament al client, sobre les dades ja carregades per `GET /api/animals` — no genera peticions addicionals. Els catàlegs per als desplegables provenen de `GET /api/animals/filtres`.
+
+**Ordenació de columnes:** Clicant la capçalera de DIB, Raça, Lot/Cort, Estat de salut o Edat s'ordena la taula (asc → desc → sense ordre). Igual que els filtres, és 100% client-side.
+
+**Fitxa de l'animal:** En clicar una fila de la taula (fora de la casella de selecció) s'obre un modal amb:
+- Dades bàsiques (DIB, raça, sexe, data de naixement, edat, estat de salut)
+- Ubicació actual (granja, nau, cort, lot)
+- Historial complet de pesos registrats
+- Historial complet de tractaments (medicació)
+- Botó "Donar de baixa" (només si l'animal és actiu i el rol ho permet)
+
+**Permisos del botó de baixa des de la fitxa:** Admin i Veterinari (ampliació sobre docs/07_modul_arxiu_historic.md, secció 1, que reservava el registre de baixes exclusivament a Admin dins del mòdul Arxiu). Treballador veu la fitxa completa però sense el botó.
+
+---
+
 ## 6. Taules de Base de Dades Implicades
 
 | Taula | Operació |
@@ -192,6 +214,8 @@ Botó **"Alta individual"**, visible per a **Admin i Veterinari**, a la pantalla
 
 ## 7. Detall Tècnic de la Implementació Actual
 
+**getAnimalsActius() ja no es basa en v_animals_actius.** La vista SQL original només exposava els NOMS de lot/cort/zona, no els seus ids — necessaris per al filtratge en cascada. La query es va reescriure amb un JOIN directe que exposa també `lotId`, `cortId`, `zonaId` i `ubicacioId`, sense necessitat de modificar el DDL de la vista.
+
 ### 7.1. Endpoints API
 
 | Endpoint | Mètode | Rol | Descripció |
@@ -201,6 +225,9 @@ Botó **"Alta individual"**, visible per a **Admin i Veterinari**, a la pantalla
 | `/api/animals/catalegs` | GET | Admin, Veterinari | Races, lots i corts per als desplegables |
 | `/api/animals/comprovar-duplicats` | POST | Admin | Comprova DIB existents (previsualització alta massiva) |
 | `/api/animals/bulk-import` | POST | Admin | Resol lots per fila, revalida duplicats, confirma la importació |
+| `/api/animals/filtres` | GET | Tots | Catàlegs de Granja/Zona/Lot per als desplegables |
+| `/api/animals/[id]` | GET | Tots | Fitxa completa de l'animal |
+| `/api/animals/[id]/baixa` | POST | Admin, Veterinari | Registra la baixa (venda o mort) |
 
 ### 7.2. Format del CSV (implementat)
 

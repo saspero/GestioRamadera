@@ -44,19 +44,22 @@ export type Animal = {
 }
 
 /**
- * Animal actiu tal com el retorna v_animals_actius (join amb raça,
- * lot, cort i zona), més l'indicador de bloqueig comercial.
+ * Animal actiu tal com el retorna getAnimalsActius() (join amb raça,
+ * lot, cort, zona i ubicació), més l'indicador de bloqueig comercial.
  *
  * @remarks Definit de manera independent de `Animal` (no com a
  * extensió) perquè les queries que l'alimenten (getAnimalsActius,
- * cercarPerCrotal a src/lib/db/queries/animals.ts) no seleccionen
+ * cercarPerDib a src/lib/db/queries/animals.ts) no seleccionen
  * estatActiu, creatEl ni actualitzatEl — per definició, tot animal
- * present a v_animals_actius ja té estat_actiu = TRUE. Prometre
- * aquests camps aquí donaria una falsa sensació de tipatge complet
- * quan en realitat mai arriben del backend.
- * @remarks `dib` és l'únic identificador de l'animal — el DIB
- * (Document d'Identificació Bovina) i el crotal físic a l'orella són
- * la mateixa dada, no dos camps separats.
+ * actiu ja té estat_actiu = TRUE. Prometre aquests camps aquí donaria
+ * una falsa sensació de tipatge complet quan en realitat mai arriben
+ * del backend.
+ * @remarks Des de la versió que afegeix filtres en cascada
+ * (Granja/Zona/Lot) a la pantalla d'Animals, aquest tipus exposa
+ * també els ids (lotId, cortId, zonaId, ubicacioId), no només els
+ * noms — necessaris per fer el filtratge exacte als desplegables.
+ * La query ja no es basa en la vista v_animals_actius (que només
+ * exposava els noms), sinó en un JOIN directe (docs/08_modul_llistat_actius.md).
  */
 export type AnimalActiu = {
   id:            number
@@ -66,8 +69,13 @@ export type AnimalActiu = {
   estatSalut:    EstatSalut
   sexe:          Sexe | null
   nomLot:        string | null
+  lotId:         number | null
   codiCort:      string | null
+  cortId:        number | null
   nomZona:       string | null
+  zonaId:        number | null
+  nomUbicacio:   string | null
+  ubicacioId:    number | null
   dataEntrada:   Date | null
   edatDies:      number | null
   /** True si l'animal té un tractament actiu amb bloqueig comercial vigent. */
