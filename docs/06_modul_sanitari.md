@@ -6,6 +6,25 @@
 
 ---
 
+## 0. Estat d'Implementació
+
+| Funcionalitat | Estat | Detall |
+|---|---|---|
+| Fitxa del medicament / inventari (secció 2) | ✅ Implementat | Alta manual des de formulari |
+| Importació CSV de medicaments (secció 3) | ✅ Implementat | Duplicats: actualització automàtica de l'estoc (ampliació — veure 0.1) |
+| Aplicació de tractaments individual/per lot (secció 4) | ✅ Implementat | Mateixos camps als dos modes, sense personalització per animal |
+| Bloqueig comercial per supressió | ✅ Implementat (des del Dashboard i Arxiu) | Ja funcional des de lliuraments anteriors; el mòdul Sanitari només crea el tractament, el bloqueig ja actuava |
+| Impacte econòmic per animal (secció 5) | ❌ Pendent | Càlcul de cost sanitari acumulat, encara no implementat als informes |
+
+### 0.1. Decisions ampliades sobre el disseny original
+
+- **Permisos:** Treballador ara té accés de només lectura al mòdul (el disseny original, secció 1, l'excloïa completament). Manté el mateix patró ja aplicat a Granja/Corts, Lots i Animals.
+- **Duplicats al CSV (secció 3.3):** el disseny original oferia triar entre "Actualitzar l'estoc" o "Crear un registre independent". S'ha optat per **actualitzar sempre automàticament**, sense preguntar-ho a l'usuari — simplifica el flux i evita duplicats accidentals de medicaments amb el mateix nom+lot.
+- **Estoc negatiu en aplicar tractament (secció 4.2):** el sistema NO bloqueja l'aplicació d'un tractament si la dosi total supera l'estoc disponible. L'estoc pot quedar negatiu; es gestiona manualment (revisió de l'inventari).
+- **Connexió pendent:** el botó "Aplicar tractament" en mode individual des de la fitxa d'un animal (docs/08_modul_llistat_actius.md) encara no està connectat — el component `ModalAplicarTractament` ja suporta aquest mode (`animalIdPreseleccionat`), però la crida des de `FitxaAnimalModal.tsx` queda per a un proper lliurament.
+
+---
+
 ## 1. Descripció General
 
 El Mòdul Sanitari gestiona l'inventari de medicaments de la granja i l'aplicació de tractaments veterinaris als animals. Garanteix la traçabilitat clínica i econòmica dels fàrmacs, i implementa el **bloqueig comercial automàtic** dels animals en període de supressió.
@@ -173,3 +192,16 @@ Aquest cost s'acumula a l'historial econòmic de l'animal i es reflecteix als in
 | `public.audit_log` | Registre de totes les altes i aplicacions de tractaments |
 
 > DDL complet a [`02_model_de_dades.md`](./02_model_de_dades.md), secció 3 (Mòdul Sanitari).
+
+---
+
+### 7. Nous endpoints
+
+| Endpoint | Mètode | Rol | Descripció |
+|---|---|---|---|
+| `/api/sanitari/medicaments` | GET | Tots | Inventari complet |
+| `/api/sanitari/medicaments` | POST | Admin, Veterinari | Alta manual d'un medicament |
+| `/api/sanitari/medicaments/comprovar-duplicats` | POST | Admin, Veterinari | Comprova nom+lot existents (previsualització CSV) |
+| `/api/sanitari/medicaments/bulk-import` | POST | Admin, Veterinari | Confirma la importació (actualitza duplicats automàticament) |
+| `/api/sanitari/tractaments` | GET | Tots | Llistat de tractaments aplicats |
+| `/api/sanitari/tractaments` | POST | Admin, Veterinari | Aplica un tractament (individual o `lotId` per expandir-lo) |

@@ -43,8 +43,8 @@
 | **Lots — Consulta i detall d'animals** | ✅ | ✅ | 📖 |
 | **Lots — Crear lots** | ✅ | ✅ | ❌ |
 | **Lots — Moure animals entre lots** | ✅ | ✅ | ❌ |
-| **Mòdul Sanitari — Tractaments** | ✅ | ✅ | ❌ |
-| **Mòdul Sanitari — Magatzem fàrmacs** | ✅ | ✅ | ❌ |
+| **Mòdul Sanitari — Consulta (inventari i tractaments)** | ✅ | ✅ | 📖 |
+| **Mòdul Sanitari — Gestió (alta medicament, aplicar tractament)** | ✅ | ✅ | ❌ |
 | **Mòdul Sanitari — Càrrega CSV fàrmacs** | ✅ | ✅ | ❌ |
 | **Logística — Consums massius** | ✅ | ❌ | ✅ |
 | **Logística — Estoc magatzems** | ✅ | ❌ | 📖 |
