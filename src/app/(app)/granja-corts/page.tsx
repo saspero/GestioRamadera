@@ -25,29 +25,20 @@ type ModalObert =
  * @returns Pàgina amb arbre jeràrquic Granja → Zona → Cort i modals
  * de creació/edició per a cadascun dels tres nivells
  *
- * @remarks Control d'accés: lectura oberta als 3 rols (Admin,
- * Veterinari, Treballador). Els botons de creació/edició només es
- * mostren per a Admin i Veterinari — docs/13_modul_granja_corts.md.
- * Aquesta comprovació és només visual: els endpoints POST/PATCH
- * tornen a validar el rol igualment.
- * @remarks Multitenancy: no toca la BD directament; tota la lectura
- * i escriptura passa pel hook useInfraestructura, que crida els
- * endpoints /api/infraestructura/*, aïllats via search_path del tenant.
+ * @remarks MIGRACIÓ REACT QUERY: useInfraestructura() ara només fa
+ * la lectura (useQuery); cada modal (ModalGranja, ModalZona,
+ * ModalCort) fa la seva pròpia mutació i invalida
+ * queryKeys.infraestructura.all — aquesta pàgina només necessita
+ * tancar el modal en `onSalvat`, sense recarregar res manualment.
+ * @remarks Control d'accés: lectura oberta als 3 rols. Els botons
+ * de creació/edició només per a Admin i Veterinari. Aquesta
+ * comprovació és només visual: els endpoints POST/PATCH tornen a
+ * validar el rol igualment.
  */
 export default function GranjaCortsPage() {
   const { rol } = useSessio()
   const potEditar = rol === 'Admin' || rol === 'Veterinari'
-  const {
-    ubicacions,
-    carregant,
-    error,
-    crearUbicacio,
-    actualitzarUbicacio,
-    crearZona,
-    actualitzarZona,
-    crearCort,
-    actualitzarCort,
-  } = useInfraestructura()
+  const { ubicacions, carregant, error } = useInfraestructura()
 
   const [modal, setModal] = useState<ModalObert>(null)
 
@@ -93,14 +84,14 @@ export default function GranjaCortsPage() {
       )}
 
       {modal?.tipus === 'granja-nova' && (
-        <ModalGranja onTancar={() => setModal(null)} onDesar={crearUbicacio} />
+        <ModalGranja onTancar={() => setModal(null)} onSalvat={() => setModal(null)} />
       )}
 
       {modal?.tipus === 'granja-editar' && (
         <ModalGranja
           granjaExistent={modal.granja}
           onTancar={() => setModal(null)}
-          onDesar={(params) => actualitzarUbicacio(modal.granja.id, params)}
+          onSalvat={() => setModal(null)}
         />
       )}
 
@@ -108,7 +99,7 @@ export default function GranjaCortsPage() {
         <ModalZona
           ubicacioId={modal.ubicacioId}
           onTancar={() => setModal(null)}
-          onDesar={(params) => crearZona({ ubicacioId: modal.ubicacioId, ...params })}
+          onSalvat={() => setModal(null)}
         />
       )}
 
@@ -117,7 +108,7 @@ export default function GranjaCortsPage() {
           ubicacioId={modal.zona.ubicacioId}
           zonaExistent={modal.zona}
           onTancar={() => setModal(null)}
-          onDesar={(params) => actualitzarZona(modal.zona.id, params.nom)}
+          onSalvat={() => setModal(null)}
         />
       )}
 
@@ -125,7 +116,7 @@ export default function GranjaCortsPage() {
         <ModalCort
           zonaId={modal.zonaId}
           onTancar={() => setModal(null)}
-          onDesar={(params) => crearCort({ zonaId: modal.zonaId, ...params })}
+          onSalvat={() => setModal(null)}
         />
       )}
 
@@ -134,7 +125,7 @@ export default function GranjaCortsPage() {
           zonaId={modal.cort.zonaId}
           cortExistent={modal.cort}
           onTancar={() => setModal(null)}
-          onDesar={(params) => actualitzarCort(modal.cort.id, params)}
+          onSalvat={() => setModal(null)}
         />
       )}
     </div>

@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { Plus, Upload, Syringe } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { TaulaMedicaments } from '@/components/sanitari/TaulaMedicaments'
 import { TaulaTractaments } from '@/components/sanitari/TaulaTractaments'
 import { ModalNouMedicament } from '@/components/sanitari/ModalNouMedicament'
 import { ModalImportarMedicaments } from '@/components/sanitari/ModalImportarMedicaments'
 import { ModalAplicarTractament } from '@/components/sanitari/ModalAplicarTractament'
 import { useSessio } from '@/lib/session/SessioContext'
+import { queryKeys } from '@/lib/query/queryKeys'
 import type { Medicament, TractamentAmbMedicament } from '@/types/sanitari'
 
 type Vista = 'inventari' | 'tractaments'
@@ -19,68 +21,35 @@ type Vista = 'inventari' | 'tractaments'
  *
  * @returns Pàgina amb selector de vista i les taules corresponents
  *
- * @remarks Control d'accés: lectura oberta als 3 rols (Treballador
- * només lectura, ampliació sobre docs/06_modul_sanitari.md, secció 1,
- * que reservava l'accés exclusivament a Admin/Veterinari — decisió
- * confirmada per mantenir el mateix patró aplicat a la resta de
- * mòduls). Les accions d'escriptura (nou medicament, importar CSV,
- * aplicar tractament) només per a Admin i Veterinari.
- * @remarks Multitenancy: no toca la BD directament; tota la lectura
- * passa pels endpoints /api/sanitari/*, aïllats via search_path del
- * tenant.
+ * @remarks MIGRACIÓ REACT QUERY: medicaments i tractaments es
+ * carreguen amb useQuery independents (queryKeys.sanitari.medicaments
+ * i .tractaments) — canviar de pestanya no perd la cache de l'altra
+ * vista, a diferència de l'estat manual anterior que compartia un
+ * únic `carregant`. Tots els modals ja invaliden les queries
+ * afectades internament.
+ * @remarks Control d'accés: lectura oberta als 3 rols. Les accions
+ * d'escriptura només per a Admin i Veterinari.
  */
 export default function SanitariPage() {
   const { rol } = useSessio()
   const potEditar = rol === 'Admin' || rol === 'Veterinari'
 
   const [vista, setVista] = useState<Vista>('inventari')
-  const [medicaments, setMedicaments] = useState<Medicament[]>([])
-  const [tractaments, setTractaments] = useState<TractamentAmbMedicament[]>([])
-  const [carregant, setCarregant] = useState(true)
-
   const [modalNouMedicamentObert, setModalNouMedicamentObert] = useState(false)
   const [modalImportarObert, setModalImportarObert] = useState(false)
   const [modalTractamentObert, setModalTractamentObert] = useState(false)
 
-  const carregarMedicaments = useCallback(async () => {
-    setCarregant(true)
-    try {
-      const res = await fetch('/api/sanitari/medicaments')
-      if (res.ok) setMedicaments((await res.json()).medicaments)
-    } finally {
-      setCarregant(false)
-    }
-  }, [])
+  const { data: medicaments = [], isLoading: carregantMedicaments } = useQuery<Medicament[]>({
+    queryKey: queryKeys.sanitari.medicaments,
+    queryFn: () => fetch('/api/sanitari/medicaments').then((res) => res.json()).then((j) => j.medicaments),
+    enabled: vista === 'inventari',
+  })
 
-  const carregarTractaments = useCallback(async () => {
-    setCarregant(true)
-    try {
-      const res = await fetch('/api/sanitari/tractaments')
-      if (res.ok) setTractaments((await res.json()).tractaments)
-    } finally {
-      setCarregant(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (vista === 'inventari') carregarMedicaments()
-    else carregarTractaments()
-  }, [vista, carregarMedicaments, carregarTractaments])
-
-  function handleMedicamentDesat() {
-    setModalNouMedicamentObert(false)
-    carregarMedicaments()
-  }
-
-  function handleImportacioCompletada() {
-    setModalImportarObert(false)
-    carregarMedicaments()
-  }
-
-  function handleTractamentAplicat() {
-    setModalTractamentObert(false)
-    carregarTractaments()
-  }
+  const { data: tractaments = [], isLoading: carregantTractaments } = useQuery<TractamentAmbMedicament[]>({
+    queryKey: queryKeys.sanitari.tractaments,
+    queryFn: () => fetch('/api/sanitari/tractaments').then((res) => res.json()).then((j) => j.tractaments),
+    enabled: vista === 'tractaments',
+  })
 
   return (
     <div className="space-y-4">
@@ -137,29 +106,29 @@ export default function SanitariPage() {
       </div>
 
       {vista === 'inventari' ? (
-        <TaulaMedicaments medicaments={medicaments} carregant={carregant} />
+        <TaulaMedicaments medicaments={medicaments} carregant={carregantMedicaments} />
       ) : (
-        <TaulaTractaments tractaments={tractaments} carregant={carregant} />
+        <TaulaTractaments tractaments={tractaments} carregant={carregantTractaments} />
       )}
 
       {modalNouMedicamentObert && (
         <ModalNouMedicament
           onTancar={() => setModalNouMedicamentObert(false)}
-          onDesat={handleMedicamentDesat}
+          onDesat={() => setModalNouMedicamentObert(false)}
         />
       )}
 
       {modalImportarObert && (
         <ModalImportarMedicaments
           onTancar={() => setModalImportarObert(false)}
-          onImportacioCompletada={handleImportacioCompletada}
+          onImportacioCompletada={() => setModalImportarObert(false)}
         />
       )}
 
       {modalTractamentObert && (
         <ModalAplicarTractament
           onTancar={() => setModalTractamentObert(false)}
-          onAplicat={handleTractamentAplicat}
+          onAplicat={() => setModalTractamentObert(false)}
         />
       )}
     </div>

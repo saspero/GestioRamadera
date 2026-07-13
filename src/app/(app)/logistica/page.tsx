@@ -1,10 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { Plus } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { TaulaEstoc } from '@/components/logistica/TaulaEstoc'
 import { ModalConsumMassiu } from '@/components/logistica/ModalConsumMassiu'
 import { useSessio } from '@/lib/session/SessioContext'
+import { queryKeys } from '@/lib/query/queryKeys'
+import { toastExit, toastError } from '@/lib/toast/toastHelpers'
 import type { EstocMagatzemComplet } from '@/types/logistica'
 
 /**
@@ -13,57 +16,51 @@ import type { EstocMagatzemComplet } from '@/types/logistica'
  *
  * @returns Pàgina amb botó de registrar consum i la taula d'estoc
  *
+ * @remarks MIGRACIÓ REACT QUERY: l'estoc es carrega amb useQuery
+ * (queryKeys.logistica.estoc). El toggle d'estat és ara una
+ * useMutation pròpia que invalida la mateixa query i mostra un toast
+ * (abans no en mostrava cap). ModalConsumMassiu ja invalida l'estoc
+ * internament en registrar un consum.
  * @remarks Control d'accés: Admin i Treballador. Veterinari sense
- * accés en absolut (docs/09_modul_logistica_farratges.md, secció 1
- * — únic mòdul on es manté aquesta restricció total, a diferència de
- * la resta de mòduls on s'ha ampliat a "només lectura"). El toggle
- * d'estat dels magatzems és exclusiu d'Admin.
- * @remarks Multitenancy: no toca la BD directament; tota la lectura
- * passa pels endpoints /api/logistica/*, aïllats via search_path
- * del tenant.
+ * accés en absolut (únic mòdul amb aquesta restricció total). El
+ * toggle d'estat és exclusiu d'Admin.
  */
 export default function LogisticaPage() {
   const { rol } = useSessio()
+  const queryClient = useQueryClient()
   const potRegistrarConsum = rol === 'Admin' || rol === 'Treballador'
   const potGestionarEstat = rol === 'Admin'
 
-  const [estoc, setEstoc] = useState<EstocMagatzemComplet[]>([])
-  const [carregant, setCarregant] = useState(true)
   const [modalConsumObert, setModalConsumObert] = useState(false)
 
-  const carregarEstoc = useCallback(async () => {
-    setCarregant(true)
-    try {
-      const res = await fetch('/api/logistica/estoc')
-      if (res.ok) setEstoc((await res.json()).estoc)
-    } finally {
-      setCarregant(false)
-    }
-  }, [])
+  const { data: estoc = [], isLoading } = useQuery<EstocMagatzemComplet[]>({
+    queryKey: queryKeys.logistica.estoc,
+    queryFn: () => fetch('/api/logistica/estoc').then((res) => res.json()).then((j) => j.estoc),
+  })
 
-  useEffect(() => {
-    carregarEstoc()
-  }, [carregarEstoc])
-
-  function handleConsumRegistrat() {
-    setModalConsumObert(false)
-    carregarEstoc()
-  }
-
-  async function handleCanviarEstat(item: EstocMagatzemComplet) {
-    const nouEstat = item.estat === 'Actiu' ? 'Deshabilitat' : 'Actiu'
-    await fetch(`/api/logistica/estoc/${item.tipus}/${item.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipus: item.tipus, estat: nouEstat }),
-    })
-    carregarEstoc()
-  }
+  const mutacioEstat = useMutation({
+    mutationFn: async (item: EstocMagatzemComplet) => {
+      const nouEstat = item.estat === 'Actiu' ? 'Deshabilitat' : 'Actiu'
+      const res = await fetch(`/api/logistica/estoc/${item.tipus}/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipus: item.tipus, estat: nouEstat }),
+      })
+      if (!res.ok) {
+        const json = await res.json()
+        throw new Error(json.error ?? 'Error en canviar l\'estat')
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.logistica.estoc })
+      toastExit('Estat actualitzat')
+    },
+    onError: (err) => toastError(err, 'Error en canviar l\'estat'),
+  })
 
   // Si Veterinari accedeix directament per URL, el Sidebar ja no li
-  // mostra l'enllaç (docs/09_modul_logistica_farratges.md, secció 1),
-  // però per si hi arriba igualment, es mostra un missatge clar en
-  // comptes d'una taula buida sense explicació.
+  // mostra l'enllaç, però per si hi arriba igualment, es mostra un
+  // missatge clar en comptes d'una taula buida sense explicació.
   if (rol === 'Veterinari') {
     return (
       <div className="text-center py-16 text-gray-500">
@@ -90,15 +87,15 @@ export default function LogisticaPage() {
 
       <TaulaEstoc
         estoc={estoc}
-        carregant={carregant}
+        carregant={isLoading}
         potGestionar={potGestionarEstat}
-        onCanviarEstat={handleCanviarEstat}
+        onCanviarEstat={(item) => mutacioEstat.mutate(item)}
       />
 
       {modalConsumObert && (
         <ModalConsumMassiu
           onTancar={() => setModalConsumObert(false)}
-          onRegistrat={handleConsumRegistrat}
+          onRegistrat={() => setModalConsumObert(false)}
         />
       )}
     </div>

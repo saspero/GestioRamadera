@@ -1,13 +1,11 @@
 /**
  * Factory de claus de React Query, centralitzada per mòdul.
  *
- * @remarks Evita strings màgics repetits a cada component
- * (`['animals']`, `['animals', cerca]`...) i facilita la invalidació
- * coherent de queries relacionades des de qualsevol mutació. Patró
- * recomanat oficialment per TanStack Query.
- * @remarks Migració progressiva: aquest fitxer creix a mesura que
- * es migren mòduls a React Query (Animals i Lots en aquest
- * lliurament; Granja/Corts, Sanitari i Logística en el següent).
+ * @remarks Evita strings màgics repetits a cada component i
+ * facilita la invalidació coherent de queries relacionades des de
+ * qualsevol mutació. Patró recomanat oficialment per TanStack Query.
+ * @remarks Migració completada per mòduls: Animals, Lots (lliurament
+ * 2), Granja/Corts, Sanitari, Logística (lliurament 3).
  */
 export const queryKeys = {
   animals: {
@@ -21,5 +19,19 @@ export const queryKeys = {
     all: ['lots'] as const,
     llistat: ['lots', 'llistat'] as const,
     animals: (lotId: number) => ['lots', lotId, 'animals'] as const,
+  },
+  infraestructura: {
+    /** Jerarquia completa Granja → Zona → Cort. Una única query
+     * (l'endpoint no admet filtres parcials), per això no hi ha
+     * subclaus com als altres mòduls. */
+    all: ['infraestructura'] as const,
+  },
+  sanitari: {
+    medicaments: ['sanitari', 'medicaments'] as const,
+    tractaments: ['sanitari', 'tractaments'] as const,
+  },
+  logistica: {
+    estoc: ['logistica', 'estoc'] as const,
+    catalegs: ['logistica', 'catalegs'] as const,
   },
 }

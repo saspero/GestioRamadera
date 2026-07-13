@@ -1,7 +1,11 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { X } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Modal } from '@/components/ui/Modal'
+import { ModalAccions } from '@/components/ui/ModalAccions'
+import { queryKeys } from '@/lib/query/queryKeys'
+import { toastExit, toastError } from '@/lib/toast/toastHelpers'
 import type { CatalegsConsum, UnitatMesura } from '@/types/logistica'
 
 type ModalConsumMassiuProps = {
@@ -20,30 +24,30 @@ type ModalConsumMassiuProps = {
  * @param props.onRegistrat - Callback en confirmar amb èxit
  * @returns Modal amb el formulari de consum
  *
+ * @remarks MIGRACIÓ REACT QUERY: catàlegs via useQuery
+ * (queryKeys.logistica.catalegs). La confirmació és una useMutation
+ * que invalida queryKeys.logistica.estoc en tenir èxit, perquè la
+ * taula de Control d'Estoc reflecteixi el nou nivell sense recàrrega
+ * manual.
  * @remarks Lògica de bales (secció 2.2): quan es tria 'Unitats' i
  * l'origen té pesMitjaBalaKg configurat, es mostra el pes equivalent
- * calculat abans de confirmar. Si el magatzem no té aquest valor
- * configurat, l'opció 'Unitats' queda deshabilitada.
+ * calculat abans de confirmar.
  * @remarks Control d'accés: només es munta des de pantalles ja
  * protegides per a Admin/Treballador.
  */
 export function ModalConsumMassiu({ onTancar, onRegistrat }: ModalConsumMassiuProps) {
-  const [catalegs, setCatalegs] = useState<CatalegsConsum>({ origens: [], destins: [] })
-  const [origenClau, setOrigenClau] = useState('') // format "tipus:id"
+  const queryClient = useQueryClient()
+
+  const { data: catalegs = { origens: [], destins: [] } } = useQuery<CatalegsConsum>({
+    queryKey: queryKeys.logistica.catalegs,
+    queryFn: () => fetch('/api/logistica/catalegs').then((res) => res.json()),
+  })
+
+  const [origenClau, setOrigenClau] = useState('')
   const [zonaDestiId, setZonaDestiId] = useState<number | ''>('')
   const [quantitat, setQuantitat] = useState('')
   const [unitat, setUnitat] = useState<UnitatMesura>('kg')
   const [data, setData] = useState(new Date().toISOString().slice(0, 10))
-
-  const [enviant, setEnviant] = useState(false)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetch('/api/logistica/catalegs')
-      .then((res) => res.json())
-      .then(setCatalegs)
-      .catch(() => setCatalegs({ origens: [], destins: [] }))
-  }, [])
 
   const origenSeleccionat = useMemo(
     () => catalegs.origens.find((o) => `${o.tipus}:${o.id}` === origenClau),
@@ -53,7 +57,6 @@ export function ModalConsumMassiu({ onTancar, onRegistrat }: ModalConsumMassiuPr
   const esSitja = origenSeleccionat?.tipus === 'sitja'
   const potUsarBales = !esSitja && origenSeleccionat?.pesMitjaBalaKg !== null
 
-  // Si canvia l'origen a una sitja, força la unitat a 'kg'
   function handleOrigenChange(nouOrigenClau: string) {
     setOrigenClau(nouOrigenClau)
     const nouOrigen = catalegs.origens.find((o) => `${o.tipus}:${o.id}` === nouOrigenClau)
@@ -73,13 +76,9 @@ export function ModalConsumMassiu({ onTancar, onRegistrat }: ModalConsumMassiuPr
     quantitat.trim() !== '' &&
     Number(quantitat) > 0
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!potConfirmar || !origenSeleccionat) return
-
-    setEnviant(true)
-    setErrorMsg(null)
-    try {
+  const mutacio = useMutation({
+    mutationFn: async () => {
+      if (!origenSeleccionat) throw new Error('Cal seleccionar un origen')
       const res = await fetch('/api/logistica/consum', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -94,137 +93,126 @@ export function ModalConsumMassiu({ onTancar, onRegistrat }: ModalConsumMassiuPr
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error en registrar el consum')
+      return json
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.logistica.estoc })
+      toastExit('Consum registrat correctament')
       onRegistrat()
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Error desconegut')
-    } finally {
-      setEnviant(false)
-    }
-  }
+    },
+    onError: (err) => toastError(err, 'Error en registrar el consum'),
+  })
+
+  const peu = (
+    <ModalAccions
+      onCancelar={onTancar}
+      onConfirmar={() => mutacio.mutate()}
+      textConfirmar="Registrar consum"
+      textEnviant="Registrant..."
+      enviant={mutacio.isPending}
+      disabled={!potConfirmar}
+    />
+  )
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Registrar consum</h2>
-          <button
-            onClick={onTancar}
-            className="p-2 -mr-2 rounded-lg hover:bg-gray-100 min-h-[44px] min-w-[44px]"
-            aria-label="Tancar"
+    <Modal titol="Registrar consum" onTancar={onTancar} peu={peu}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (potConfirmar) mutacio.mutate()
+        }}
+        className="space-y-4"
+      >
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Origen *</label>
+          <select
+            value={origenClau}
+            onChange={(e) => handleOrigenChange(e.target.value)}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
+            disabled={mutacio.isPending}
           >
-            <X size={20} />
-          </button>
+            <option value="">Selecciona un origen</option>
+            {catalegs.origens.map((o) => (
+              <option key={`${o.tipus}:${o.id}`} value={`${o.tipus}:${o.id}`}>
+                {o.nom} {o.tipus === 'sitja' ? '(sitja)' : '(farratge)'}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Destí *</label>
+          <select
+            value={zonaDestiId}
+            onChange={(e) => setZonaDestiId(e.target.value ? Number(e.target.value) : '')}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
+            disabled={mutacio.isPending}
+          >
+            <option value="">Selecciona un destí</option>
+            {catalegs.destins.map((z) => (
+              <option key={z.id} value={z.id}>{z.nom}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Origen *</label>
-            <select
-              value={origenClau}
-              onChange={(e) => handleOrigenChange(e.target.value)}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
-              disabled={enviant}
-            >
-              <option value="">Selecciona un origen</option>
-              {catalegs.origens.map((o) => (
-                <option key={`${o.tipus}:${o.id}`} value={`${o.tipus}:${o.id}`}>
-                  {o.nom} {o.tipus === 'sitja' ? '(sitja)' : '(farratge)'}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Destí *</label>
-            <select
-              value={zonaDestiId}
-              onChange={(e) => setZonaDestiId(e.target.value ? Number(e.target.value) : '')}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
-              disabled={enviant}
-            >
-              <option value="">Selecciona un destí</option>
-              {catalegs.destins.map((z) => (
-                <option key={z.id} value={z.id}>{z.nom}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quantitat *</label>
-              <input
-                type="number"
-                step="0.01"
-                value={quantitat}
-                onChange={(e) => setQuantitat(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
-                disabled={enviant}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Unitat *</label>
-              <select
-                value={unitat}
-                onChange={(e) => setUnitat(e.target.value as UnitatMesura)}
-                disabled={enviant || esSitja}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base disabled:bg-gray-100"
-              >
-                <option value="kg">kg</option>
-                {!esSitja && <option value="Tones">Tones</option>}
-                {!esSitja && (
-                  <option value="Unitats" disabled={!potUsarBales}>
-                    Unitats (bales){!potUsarBales ? ' — no configurat' : ''}
-                  </option>
-                )}
-              </select>
-            </div>
-          </div>
-
-          {pesEquivalentBales !== null && (
-            <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-              {quantitat} bales = {pesEquivalentBales.toLocaleString('ca-ES')} kg
-            </p>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Data *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Quantitat *</label>
             <input
-              type="date"
-              value={data}
-              onChange={(e) => setData(e.target.value)}
+              type="number"
+              step="0.01"
+              value={quantitat}
+              onChange={(e) => setQuantitat(e.target.value)}
               required
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
-              disabled={enviant}
+              disabled={mutacio.isPending}
             />
           </div>
-
-          {errorMsg && (
-            <p role="alert" className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
-              {errorMsg}
-            </p>
-          )}
-        </form>
-
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100">
-          <button
-            onClick={onTancar}
-            className="px-4 py-2.5 text-gray-700 hover:bg-gray-100 font-medium rounded-lg min-h-[44px]"
-          >
-            Cancel·lar
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!potConfirmar || enviant}
-            className="px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white
-                       font-medium rounded-lg min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {enviant ? 'Registrant...' : 'Registrar consum'}
-          </button>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Unitat *</label>
+            <select
+              value={unitat}
+              onChange={(e) => setUnitat(e.target.value as UnitatMesura)}
+              disabled={mutacio.isPending || esSitja}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base disabled:bg-gray-100"
+            >
+              <option value="kg">kg</option>
+              {!esSitja && <option value="Tones">Tones</option>}
+              {!esSitja && (
+                <option value="Unitats" disabled={!potUsarBales}>
+                  Unitats (bales){!potUsarBales ? ' — no configurat' : ''}
+                </option>
+              )}
+            </select>
+          </div>
         </div>
-      </div>
-    </div>
+
+        {pesEquivalentBales !== null && (
+          <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+            {quantitat} bales = {pesEquivalentBales.toLocaleString('ca-ES')} kg
+          </p>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Data *</label>
+          <input
+            type="date"
+            value={data}
+            onChange={(e) => setData(e.target.value)}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
+            disabled={mutacio.isPending}
+          />
+        </div>
+
+        {mutacio.isError && (
+          <p role="alert" className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+            {mutacio.error instanceof Error ? mutacio.error.message : 'Error desconegut'}
+          </p>
+        )}
+      </form>
+    </Modal>
   )
 }
