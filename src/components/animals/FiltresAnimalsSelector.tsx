@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/query/queryKeys'
 import type { FiltresAnimals } from '@/types/animals-extra'
 
 export type ValorsFiltre = {
@@ -21,22 +22,20 @@ type FiltresAnimalsProps = {
  * @param props.onChange - Callback cridat en canviar qualsevol filtre
  * @returns Tres desplegables independents (Lot no depèn de Granja/Zona)
  *
+ * @remarks MIGRACIÓ REACT QUERY: useQuery en comptes de
+ * fetch+useEffect. Amb staleTime de 30s (configuració per defecte
+ * del QueryProvider), si l'usuari obre i tanca la taula d'animals
+ * diverses vegades en poc temps, els catàlegs no es tornen a
+ * demanar.
  * @remarks Els filtres funcionen sobre les dades ja carregades a la
- * pàgina pare (docs/08_modul_llistat_actius.md) — aquest component
- * només gestiona els valors seleccionats; el filtratge real es fa a
- * la pàgina o a TaulaAnimals.
- * @remarks En canviar la Granja, es reinicia el filtre de Zona si la
- * zona seleccionada no pertany a la nova granja.
+ * pàgina pare — aquest component només gestiona els valors
+ * seleccionats; el filtratge real es fa a TaulaAnimals.
  */
 export function FiltresAnimalsSelector({ valors, onChange }: FiltresAnimalsProps) {
-  const [filtres, setFiltres] = useState<FiltresAnimals>({ ubicacions: [], zones: [], lots: [] })
-
-  useEffect(() => {
-    fetch('/api/animals/filtres')
-      .then((res) => res.json())
-      .then(setFiltres)
-      .catch(() => setFiltres({ ubicacions: [], zones: [], lots: [] }))
-  }, [])
+  const { data: filtres = { ubicacions: [], zones: [], lots: [] } } = useQuery<FiltresAnimals>({
+    queryKey: queryKeys.animals.filtres,
+    queryFn: () => fetch('/api/animals/filtres').then((res) => res.json()),
+  })
 
   const zonesFiltrades = valors.ubicacioId
     ? filtres.zones.filter((z) => z.ubicacioId === valors.ubicacioId)
@@ -44,7 +43,6 @@ export function FiltresAnimalsSelector({ valors, onChange }: FiltresAnimalsProps
 
   function handleUbicacioChange(value: string) {
     const nouUbicacioId = value ? Number(value) : null
-    // Si la zona seleccionada no pertany a la nova granja, la reiniciem
     const zonaActualValida = filtres.zones.find(
       (z) => z.id === valors.zonaId && z.ubicacioId === nouUbicacioId
     )

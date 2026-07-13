@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/query/queryKeys'
+import { toastExit, toastError } from '@/lib/toast/toastHelpers'
 import type { MoureAnimalsInput } from '@/types/lots'
-
-type EstatMoviment = 'idle' | 'enviant' | 'completat' | 'error'
 
 /**
  * Hook que gestiona l'enviament d'una petició de moviment d'animals
@@ -11,21 +11,21 @@ type EstatMoviment = 'idle' | 'enviant' | 'completat' | 'error'
  * detall d'un lot) i la pantalla d'Animals (selecció múltiple a la
  * taula).
  *
- * @returns Estat de l'enviament i la funció per confirmar el moviment
+ * @returns Estat de la mutació i la funció per confirmar el moviment
  *
- * @remarks Control d'accés: aquest hook no fa cap comprovació de rol
- * — assumeix que només es munta des de components ja protegits per
- * a Admin/Veterinari. L'endpoint POST /api/lots/moure torna a validar
- * el rol igualment.
+ * @remarks MIGRACIÓ REACT QUERY: useMutation en comptes d'estat
+ * manual. Invalida queryKeys.animals.all (canvien de lot/cort) i
+ * queryKeys.lots.all (canvia el recompte d'ambdós lots implicats)
+ * en tenir èxit — les pàgines de Lots i Animals es refresquen soles,
+ * sense necessitat que cap component pare cridi res explícitament.
+ * @remarks Control d'accés: aquest hook no fa cap comprovació de rol.
+ * L'endpoint POST /api/lots/moure torna a validar el rol igualment.
  */
 export function useMoureAnimals() {
-  const [estat, setEstat] = useState<EstatMoviment>('idle')
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
-  const moureAnimals = useCallback(async (params: MoureAnimalsInput) => {
-    setEstat('enviant')
-    setErrorMsg(null)
-    try {
+  const mutacio = useMutation({
+    mutationFn: async (params: MoureAnimalsInput) => {
       const res = await fetch('/api/lots/moure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -33,20 +33,24 @@ export function useMoureAnimals() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error en moure els animals')
-      setEstat('completat')
       return json as { nombreMoguts: number }
-    } catch (err) {
-      const missatge = err instanceof Error ? err.message : 'Error desconegut'
-      setErrorMsg(missatge)
-      setEstat('error')
-      throw err
-    }
-  }, [])
+    },
+    onSuccess: (resultat) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.animals.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.lots.all })
+      toastExit(
+        resultat.nombreMoguts === 1
+          ? '1 animal mogut correctament'
+          : `${resultat.nombreMoguts} animals moguts correctament`
+      )
+    },
+    onError: (err) => toastError(err, 'Error en moure els animals'),
+  })
 
-  const reiniciar = useCallback(() => {
-    setEstat('idle')
-    setErrorMsg(null)
-  }, [])
-
-  return { estat, errorMsg, moureAnimals, reiniciar }
+  return {
+    estat: mutacio.isPending ? 'enviant' : mutacio.isSuccess ? 'completat' : mutacio.isError ? 'error' : 'idle',
+    errorMsg: mutacio.error instanceof Error ? mutacio.error.message : null,
+    moureAnimals: mutacio.mutateAsync,
+    reiniciar: mutacio.reset,
+  }
 }
