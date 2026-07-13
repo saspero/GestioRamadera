@@ -1,5 +1,6 @@
 import { queryTenant, type TenantContext } from '../client'
 import type { EstocMagatzemComplet, CatalegsConsum } from '@/types/logistica'
+import { calcularQuantitatEnTones } from '@/lib/logistica/logistica-calculs'
 
 /**
  * Retorna l'estoc de tots els magatzems i sitges (actius i
@@ -134,21 +135,19 @@ export async function getCatalegsConsum(ctx: TenantContext): Promise<CatalegsCon
  *
  * @param ctx - Context del tenant (schema, usuari, rol)
  * @param params - Origen, destí, quantitat, unitat i data
- * @returns L'estoc resultant després del descompte, per detectar
- * alertes al client sense una segona consulta
+ * @returns L'estoc resultant després del descompte
  *
  * @remarks Decisió confirmada amb l'usuari: el formulari únic de
  * "Consums Massius" (docs/09_modul_logistica_farratges.md, secció 2)
- * escriu a UNA de les dues taules segons el tipus d'origen — no hi
- * ha selecció manual de taula, es determina per `origenTipus`.
- * @remarks Lògica de bales (secció 2.2): si unitat==='Unitats',
- * quantitat_kg_real = quantitat × pes_mitja_bala_kg del magatzem.
- * Només aplicable a magatzems de farratge (les sitges sempre usen kg).
- * @remarks NO es bloqueja si l'estoc quedaria negatiu — el document
- * (secció 2.3) preveu validar-ho, però seguint el mateix criteri ja
- * aplicat al mòdul Sanitari (estoc pot quedar negatiu, gestió
- * manual), es deixa com a advertència informativa al client, no
- * com a bloqueig al backend.
+ * escriu a UNA de les dues taules segons el tipus d'origen.
+ * @remarks Lògica de bales (secció 2.2): la conversió a tones es
+ * delega a calcularQuantitatEnTones() (src/lib/logistica/logistica-calculs.ts),
+ * extreta com a funció pura i testejada a
+ * src/lib/logistica/logistica-calculs.test.ts — abans aquesta lògica
+ * vivia inline en aquesta mateixa funció, sense tests possibles
+ * sense connexió real a BD.
+ * @remarks NO es bloqueja si l'estoc quedaria negatiu — mateix
+ * criteri que al mòdul Sanitari.
  * @remarks Multitenancy: aïllat via queryTenant/search_path. INSERT
  * del moviment + UPDATE de l'estoc en una única transacció.
  */
@@ -164,7 +163,6 @@ export async function registrarConsum(
   }
 ): Promise<{ estocResultant: number }> {
   if (params.origenTipus === 'sitja') {
-    // Sitges: sempre en kg, taula consums_pinso_nau
     const rows = await queryTenant<{ estoc_actual_kg: string }>(
       ctx,
       `WITH nou_consum AS (
@@ -183,25 +181,15 @@ export async function registrarConsum(
     return { estocResultant: Number(rows[0]?.estoc_actual_kg ?? 0) }
   }
 
-  // Magatzem de farratge: pot ser kg, Tones o Unitats (bales)
   const magatzemRows = await queryTenant<{ pes_mitja_bala_kg: string | null }>(
     ctx,
     `SELECT pes_mitja_bala_kg FROM magatzems_farratge WHERE id = $1`,
     [params.origenId]
   )
   const pesMitjaBala = magatzemRows[0]?.pes_mitja_bala_kg
+  const pesMitjaBalaNum = pesMitjaBala !== null && pesMitjaBala !== undefined ? Number(pesMitjaBala) : null
 
-  let quantitatTonesReal: number
-  if (params.unitat === 'Unitats') {
-    if (pesMitjaBala === null) {
-      throw new Error('Aquest magatzem no té configurat el pes mitjà per bala')
-    }
-    quantitatTonesReal = (params.quantitat * Number(pesMitjaBala)) / 1000
-  } else if (params.unitat === 'kg') {
-    quantitatTonesReal = params.quantitat / 1000
-  } else {
-    quantitatTonesReal = params.quantitat
-  }
+  const quantitatTonesReal = calcularQuantitatEnTones(params.quantitat, params.unitat, pesMitjaBalaNum)
 
   const rows = await queryTenant<{ estoc_actual_tones: string }>(
     ctx,
@@ -225,7 +213,7 @@ export async function registrarConsum(
       params.data,
       params.quantitat,
       params.unitat,
-      quantitatTonesReal * 1000, // quantitat_kg_real sempre en kg
+      quantitatTonesReal * 1000,
       ctx.userId,
       quantitatTonesReal,
     ]
@@ -242,15 +230,10 @@ export async function registrarConsum(
  * @param estat - Nou estat
  * @returns Promise que es resol un cop desat el canvi
  *
- * @remarks Control d'accés: Admin únicament (docs/09_modul_logistica_farratges.md,
- * secció 4.2 — el toggle és una acció de configuració, no d'ús diari).
- * @remarks L'historial de moviments passats NO s'esborra en
- * deshabilitar — es preserva sempre (secció 4.2, taula d'efectes).
- * @remarks Seguretat: el nom de taula s'interpola directament al SQL,
- * però `tipus` prové sempre d'un valor ja validat per Zod
- * (canviarEstatMagatzemSchema, enum 'sitja'|'magatzem') a l'endpoint
- * — mai arriba text lliure de l'usuari a aquesta posició, per tant
- * no hi ha risc d'injecció SQL.
+ * @remarks Control d'accés: Admin únicament.
+ * @remarks Seguretat: `taula` s'interpola directament al SQL, però
+ * `tipus` prové sempre d'un valor ja validat per Zod a l'endpoint
+ * (enum 'sitja'|'magatzem') — mai arriba text lliure de l'usuari.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function canviarEstatMagatzem(

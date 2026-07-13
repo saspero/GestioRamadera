@@ -5,6 +5,8 @@ import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { useAutoRefresh } from '@/hooks/useAutoRefresh'
 import { SessioProvider } from '@/lib/session/SessioContext'
+import { QueryProvider } from '@/lib/query/QueryProvider'
+import { Toaster } from '@/components/ui/Toaster'
 import type { Rol } from '@/types/db'
 
 /**
@@ -29,17 +31,8 @@ type AppShellProps = {
  * També activa el refresc automàtic del JWT en segon pla mitjançant
  * useAutoRefresh() (veure docs/11_arquitectura_nextjs.md, secció 5.5).
  *
- * @param props - Propietats del component
- * @param props.rol - Rol de l'usuari autenticat (Admin, Veterinari o Treballador)
- * @param props.nom - Nom complet de l'usuari autenticat
- * @param props.children - Contingut de la pàgina concreta a renderitzar dins l'àrea principal
+ * @param props - Vegeu {@link AppShellProps}
  * @returns Estructura completa amb Sidebar + Header + contingut
- *
- * @remarks Control d'accés per rol: aquest component no aplica cap
- * filtre de rol directament — es limita a propagar `rol` al Sidebar,
- * que és qui decideix quines seccions de navegació es mostren
- * (veure src/lib/navigation/menuItems.ts). La protecció real de les
- * rutes i dades és responsabilitat del middleware i de cada API Route.
  *
  * @remarks Multitenancy: aquest component no toca dades de cap tenant
  * directament; només rep `rol` i `nom`, ja resolts pel Server Component
@@ -49,6 +42,14 @@ type AppShellProps = {
  * @remarks Exposa `rol` i `nom` a totes les pàgines filles via
  * SessioProvider (src/lib/session/SessioContext.tsx), evitant que
  * cada pàgina hagi de fer una petició pròpia només per conèixer el rol.
+ * @remarks QueryProvider (src/lib/query/QueryProvider.tsx) es munta
+ * aquí, envoltant tota l'àrea protegida, perquè els mòduls migrats a
+ * React Query (a partir del proper lliurament) puguin fer servir
+ * useQuery/useMutation des de qualsevol pàgina filla.
+ * @remarks Toaster (src/components/ui/Toaster.tsx) es munta un únic
+ * cop aquí — les notificacions es criden des de qualsevol component
+ * fill amb toastExit()/toastError() (src/lib/toast/toastHelpers.ts)
+ * sense necessitat de tornar a muntar el contenidor.
  */
 export function AppShell({ rol, nom, children }: AppShellProps) {
   const [sidebarObert, setSidebarObert] = useState(false)
@@ -56,20 +57,23 @@ export function AppShell({ rol, nom, children }: AppShellProps) {
   useAutoRefresh()
 
   return (
-    <div className="min-h-screen flex">
-      <Sidebar
-        rol={rol}
-        nom={nom}
-        obertMobil={sidebarObert}
-        onTancarMobil={() => setSidebarObert(false)}
-      />
+    <QueryProvider>
+      <div className="min-h-screen flex">
+        <Sidebar
+          rol={rol}
+          nom={nom}
+          obertMobil={sidebarObert}
+          onTancarMobil={() => setSidebarObert(false)}
+        />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <Header onObrirMenu={() => setSidebarObert(true)} />
-        <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
-          <SessioProvider value={{ rol, nom }}>{children}</SessioProvider>
-        </main>
+        <div className="flex-1 flex flex-col min-w-0">
+          <Header onObrirMenu={() => setSidebarObert(true)} />
+          <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
+            <SessioProvider value={{ rol, nom }}>{children}</SessioProvider>
+          </main>
+        </div>
       </div>
-    </div>
+      <Toaster />
+    </QueryProvider>
   )
 }

@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "next": "^15.0.0",
@@ -19,7 +21,9 @@
     "zod": "^3.22.0",
     "lucide-react": "^0.469.0",
     "@lucide/lab": "^0.1.2",
-    "papaparse": "^5.4.1"
+    "papaparse": "^5.4.1",
+    "@tanstack/react-query": "^5.62.0",
+    "sonner": "^1.7.1"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
@@ -33,6 +37,11 @@
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",
     "eslint": "^8.0.0",
-    "eslint-config-next": "^15.0.0"
+    "eslint-config-next": "^15.0.0",
+    "vitest": "^2.1.8",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite-tsconfig-paths": "^5.1.4",
+    "@testing-library/react": "^16.1.0",
+    "jsdom": "^25.0.1"
   }
 }
