@@ -34,7 +34,7 @@ type ModalProps = {
  * d'acció.
  *
  * @param props.titol - Text de la capçalera
- * @param props.onTancar - Callback per tancar (botó X, tecla Escape, o clic a l'overlay)
+ * @param props.onTancar - Callback per tancar (botó X o tecla Escape)
  * @param props.mida - Amplada màxima del modal (per defecte 'md')
  * @param props.children - Contingut principal
  * @param props.peu - Botons d'acció del peu, opcional
@@ -42,16 +42,13 @@ type ModalProps = {
  * @returns Estructura completa del modal
  *
  * @remarks Substitueix l'esquelet que es repetia manualment a cada
- * modal del projecte (ModalNouLot, ModalGranja, ModalNouMedicament,
- * ModalAplicarTractament...). Els modals migrats a partir d'aquest
- * lliurament l'utilitzen en comptes de reimplementar
- * `fixed inset-0 z-50 flex items-center...` cada vegada.
- * @remarks Tanca amb la tecla Escape per accessibilitat de teclat
- * (funcionalitat que cap modal anterior tenia).
- * @remarks Els modals EXISTENTS (Sanitari, Logística, Granja/Corts,
- * Lots, Animals) NO es migren en aquest lliurament — continuen
- * funcionant amb el seu propi esquelet fins que es reescriguin en un
- * proper lliurament (lliuraments 2 i 3 del pla acordat).
+ * modal del projecte. Tots els modals de l'aplicació ja el fan
+ * servir — un canvi aquí s'aplica arreu.
+ * @remarks Tanca amb la tecla Escape per accessibilitat de teclat.
+ * @remarks NO tanca en clicar l'overlay (fons fosc) — decisió
+ * explícita de l'usuari: era massa fàcil clicar fora sense voler i
+ * perdre les dades ja introduïdes a un formulari. Només es tanca amb
+ * el botó X o la tecla Escape.
  */
 export function Modal({ titol, onTancar, mida = 'md', children, peu, sobreposat = false }: ModalProps) {
   useEffect(() => {
@@ -65,9 +62,6 @@ export function Modal({ titol, onTancar, mida = 'md', children, peu, sobreposat 
   return (
     <div
       className={`fixed inset-0 flex items-center justify-center bg-black/50 p-4 ${sobreposat ? 'z-[60]' : 'z-50'}`}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onTancar()
-      }}
     >
       <div className={`bg-white rounded-lg shadow-xl w-full ${AMPLADES[mida]} max-h-[90vh] flex flex-col`}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
