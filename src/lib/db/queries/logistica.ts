@@ -1,5 +1,5 @@
 import { queryTenant, type TenantContext } from '../client'
-import type { EstocMagatzemComplet, CatalegsConsum } from '@/types/logistica'
+import type { EstocMagatzemComplet, CatalegsConsum, TipusPinso, Sitja, MagatzemFarratge } from '@/types/logistica'
 import { calcularQuantitatEnTones } from '@/lib/logistica/logistica-calculs'
 
 /**
@@ -10,16 +10,13 @@ import { calcularQuantitatEnTones } from '@/lib/logistica/logistica-calculs'
  * @returns Array de magatzems/sitges amb estoc i alerta
  *
  * @remarks NO reutilitza la vista v_estoc_magatzems (usada al
- * Dashboard) perquè aquesta filtra `WHERE estat = 'Actiu'` a totes
- * dues branques — pensada per a les alertes del Dashboard, que
- * només han de mostrar espais en ús. La pantalla de Control d'Estoc
- * (docs/09_modul_logistica_farratges.md, secció 5) necessita veure
- * TOTS els magatzems, incloent els deshabilitats, per poder-los
- * gestionar — per això aquesta query pròpia replica la mateixa
- * lògica de la vista (jerarquia de llindars, càlcul d'alerta) però
- * sense el filtre d'estat.
+ * Dashboard) perquè aquesta filtra `WHERE estat = 'Actiu'`. La
+ * pantalla de Control d'Estoc necessita veure TOTS els magatzems.
+ * @remarks Per a sitges, `tipusProducte` és ara el nom del tipus de
+ * pinso del catàleg (JOIN amb tipus_pinso_cataleg), no text lliure
+ * (database/07_migracio_pinsos_magatzems.sql).
  * @remarks Control d'accés: Admin i Treballador (lectura), Veterinari
- * sense accés (docs/09_modul_logistica_farratges.md, secció 1).
+ * sense accés.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function getEstocComplet(ctx: TenantContext): Promise<EstocMagatzemComplet[]> {
@@ -40,7 +37,7 @@ export async function getEstocComplet(ctx: TenantContext): Promise<EstocMagatzem
        'sitja' AS tipus,
        s.id,
        s.nom,
-       s.tipus_pinso AS "tipusProducte",
+       tp.nom AS "tipusProducte",
        s.estoc_actual_kg AS "estocActual",
        'kg' AS unitat,
        s.capacitat_kg AS capacitat,
@@ -52,6 +49,7 @@ export async function getEstocComplet(ctx: TenantContext): Promise<EstocMagatzem
          ELSE 'NORMAL'
        END AS "estatAlerta"
      FROM sitges s
+     LEFT JOIN tipus_pinso_cataleg tp ON tp.id = s.tipus_pinso_id
      CROSS JOIN configuracio_general cg
 
      UNION ALL
@@ -86,14 +84,16 @@ export async function getEstocComplet(ctx: TenantContext): Promise<EstocMagatzem
 
 /**
  * Retorna els catàlegs necessaris per al formulari de Consums
- * Massius: orígens (només magatzems/sitges ACTIUS) i destins (totes
- * les zones).
+ * Massius: orígens (només magatzems/sitges ACTIUS) i destins
+ * (zones on hi ha animals que consumeixen).
  *
  * @param ctx - Context del tenant (schema, usuari, rol)
  * @returns Orígens i destins seleccionables
  *
- * @remarks Només es mostren magatzems en estat 'Actiu' com a origen
- * (docs/09_modul_logistica_farratges.md, secció 2.1).
+ * @remarks Destí filtrat a NAU_ANIMALS i PASTURA únicament — un
+ * COBERT_EMMAGATZEMATGE no consumeix aliment, només l'emmagatzema,
+ * per tant mai té sentit com a destí d'un consum (bug corregit:
+ * abans es mostraven totes les zones sense filtrar).
  * @remarks Control d'accés: Admin i Treballador.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
@@ -108,9 +108,12 @@ export async function getCatalegsConsum(ctx: TenantContext): Promise<CatalegsCon
       `SELECT id, tipus_farratge AS nom, pes_mitja_bala_kg AS "pesMitjaBalaKg"
        FROM magatzems_farratge WHERE estat = 'Actiu' ORDER BY tipus_farratge`
     ),
-    queryTenant<{ id: number; nom: string; tipusZona: 'NAU_ANIMALS' | 'COBERT_EMMAGATZEMATGE' | 'PASTURA' }>(
+    queryTenant<{ id: number; nom: string; tipusZona: 'NAU_ANIMALS' | 'PASTURA' }>(
       ctx,
-      `SELECT id, nom, tipus_zona AS "tipusZona" FROM zones_infraestructura ORDER BY nom`
+      `SELECT id, nom, tipus_zona AS "tipusZona"
+       FROM zones_infraestructura
+       WHERE tipus_zona IN ('NAU_ANIMALS', 'PASTURA')
+       ORDER BY nom`
     ),
   ])
 
@@ -130,26 +133,10 @@ export async function getCatalegsConsum(ctx: TenantContext): Promise<CatalegsCon
 
 /**
  * Registra un consum massiu, escrivint a la taula corresponent
- * segons el tipus d'origen (sitja → consums_pinso_nau, magatzem de
- * farratge → moviments_farratge), i descompta l'estoc.
+ * segons el tipus d'origen, i descompta l'estoc.
  *
- * @param ctx - Context del tenant (schema, usuari, rol)
- * @param params - Origen, destí, quantitat, unitat i data
- * @returns L'estoc resultant després del descompte
- *
- * @remarks Decisió confirmada amb l'usuari: el formulari únic de
- * "Consums Massius" (docs/09_modul_logistica_farratges.md, secció 2)
- * escriu a UNA de les dues taules segons el tipus d'origen.
- * @remarks Lògica de bales (secció 2.2): la conversió a tones es
- * delega a calcularQuantitatEnTones() (src/lib/logistica/logistica-calculs.ts),
- * extreta com a funció pura i testejada a
- * src/lib/logistica/logistica-calculs.test.ts — abans aquesta lògica
- * vivia inline en aquesta mateixa funció, sense tests possibles
- * sense connexió real a BD.
- * @remarks NO es bloqueja si l'estoc quedaria negatiu — mateix
- * criteri que al mòdul Sanitari.
- * @remarks Multitenancy: aïllat via queryTenant/search_path. INSERT
- * del moviment + UPDATE de l'estoc en una única transacció.
+ * @remarks Sense canvis funcionals respecte a la versió anterior —
+ * vegeu docs/09_modul_logistica_farratges.md.
  */
 export async function registrarConsum(
   ctx: TenantContext,
@@ -224,17 +211,7 @@ export async function registrarConsum(
 /**
  * Canvia l'estat (Actiu/Deshabilitat) d'una sitja o magatzem de farratge.
  *
- * @param ctx - Context del tenant (schema, usuari, rol)
- * @param tipus - 'sitja' o 'magatzem'
- * @param id - Id de l'element
- * @param estat - Nou estat
- * @returns Promise que es resol un cop desat el canvi
- *
- * @remarks Control d'accés: Admin únicament.
- * @remarks Seguretat: `taula` s'interpola directament al SQL, però
- * `tipus` prové sempre d'un valor ja validat per Zod a l'endpoint
- * (enum 'sitja'|'magatzem') — mai arriba text lliure de l'usuari.
- * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ * @remarks Sense canvis respecte a la versió anterior.
  */
 export async function canviarEstatMagatzem(
   ctx: TenantContext,
@@ -244,4 +221,352 @@ export async function canviarEstatMagatzem(
 ): Promise<void> {
   const taula = tipus === 'sitja' ? 'sitges' : 'magatzems_farratge'
   await queryTenant(ctx, `UPDATE ${taula} SET estat = $1 WHERE id = $2`, [estat, id])
+}
+
+/**
+ * Retorna el catàleg complet de tipus de pinso, amb els seus
+ * components (ingredients i percentatges).
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @returns Array de tipus de pinso amb components niats
+ *
+ * @remarks Dues queries independents (tipus + components) combinades
+ * en memòria, mateix patró que getJerarquiaCompleta
+ * (src/lib/db/queries/infraestructura.ts) — volum de files baix.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function getTipusPinsoCataleg(ctx: TenantContext): Promise<TipusPinso[]> {
+  const [tipus, components] = await Promise.all([
+    queryTenant<{ id: number; codi: string; nom: string }>(
+      ctx,
+      `SELECT id, codi, nom FROM tipus_pinso_cataleg ORDER BY nom`
+    ),
+    queryTenant<{ id: number; tipusPinsoId: number; nomComponent: string; percentatge: string }>(
+      ctx,
+      `SELECT id, tipus_pinso_id AS "tipusPinsoId", nom_component AS "nomComponent", percentatge
+       FROM component_pinso ORDER BY nom_component`
+    ),
+  ])
+
+  return tipus.map((t) => ({
+    ...t,
+    components: components
+      .filter((c) => c.tipusPinsoId === t.id)
+      .map((c) => ({ id: c.id, nomComponent: c.nomComponent, percentatge: Number(c.percentatge) })),
+  }))
+}
+
+/**
+ * Crea un tipus de pinso nou amb la seva composició.
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param params - Codi, nom i components (nom + percentatge cadascun)
+ * @returns L'id del tipus de pinso creat
+ *
+ * @remarks Control d'accés: Admin i Treballador.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path. INSERT
+ * del tipus + tots els components en una única transacció.
+ */
+export async function crearTipusPinso(
+  ctx: TenantContext,
+  params: { codi: string; nom: string; components: { nomComponent: string; percentatge: number }[] }
+): Promise<{ id: number }> {
+  const rows = await queryTenant<{ id: number }>(
+    ctx,
+    `WITH nou_tipus AS (
+       INSERT INTO tipus_pinso_cataleg (codi, nom)
+       VALUES ($1, $2)
+       RETURNING id
+     ),
+     nous_components AS (
+       INSERT INTO component_pinso (tipus_pinso_id, nom_component, percentatge)
+       SELECT nt.id, c.nom, c.percentatge
+       FROM nou_tipus nt
+       CROSS JOIN UNNEST($3::text[], $4::decimal[]) AS c(nom, percentatge)
+     )
+     SELECT id FROM nou_tipus`,
+    [
+      params.codi,
+      params.nom,
+      params.components.map((c) => c.nomComponent),
+      params.components.map((c) => c.percentatge),
+    ]
+  )
+  return rows[0]
+}
+
+/**
+ * Actualitza un tipus de pinso existent, substituint completament
+ * la seva llista de components.
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param id - Id del tipus de pinso
+ * @param params - Codi, nom i la nova llista completa de components
+ * @returns Promise que es resol un cop desat el canvi
+ *
+ * @remarks Els components antics s'esborren i es reemplacen pels
+ * nous (no s'intenta un diff parcial) — més simple i suficient donat
+ * el volum baix de components per tipus de pinso.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path. Una
+ * única transacció: UPDATE + DELETE + INSERT.
+ */
+export async function actualitzarTipusPinso(
+  ctx: TenantContext,
+  id: number,
+  params: { codi: string; nom: string; components: { nomComponent: string; percentatge: number }[] }
+): Promise<void> {
+  await queryTenant(
+    ctx,
+    `WITH actualitza_tipus AS (
+       UPDATE tipus_pinso_cataleg SET codi = $2, nom = $3 WHERE id = $1
+     ),
+     esborra_components AS (
+       DELETE FROM component_pinso WHERE tipus_pinso_id = $1
+     )
+     INSERT INTO component_pinso (tipus_pinso_id, nom_component, percentatge)
+     SELECT $1::integer, c.nom, c.percentatge
+     FROM UNNEST($4::text[], $5::decimal[]) AS c(nom, percentatge)`,
+    [
+      id,
+      params.codi,
+      params.nom,
+      params.components.map((c) => c.nomComponent),
+      params.components.map((c) => c.percentatge),
+    ]
+  )
+}
+
+/**
+ * Retorna totes les sitges amb el nom de la seva ubicació i del
+ * tipus de pinso que emmagatzemen.
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @returns Array de sitges
+ *
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function getSitges(ctx: TenantContext): Promise<Sitja[]> {
+  const rows = await queryTenant<{
+    id: number
+    nom: string
+    ubicacioId: number
+    nomUbicacio: string
+    tipusPinsoId: number | null
+    nomTipusPinso: string | null
+    capacitatKg: string | null
+    estocActualKg: string
+    estocMinimKg: string | null
+    estat: 'Actiu' | 'Deshabilitat'
+  }>(
+    ctx,
+    `SELECT
+       s.id, s.nom,
+       s.ubicacio_id  AS "ubicacioId",
+       u.nom          AS "nomUbicacio",
+       s.tipus_pinso_id AS "tipusPinsoId",
+       tp.nom         AS "nomTipusPinso",
+       s.capacitat_kg AS "capacitatKg",
+       s.estoc_actual_kg AS "estocActualKg",
+       s.estoc_minim_kg  AS "estocMinimKg",
+       s.estat
+     FROM sitges s
+     JOIN ubicacions u ON u.id = s.ubicacio_id
+     LEFT JOIN tipus_pinso_cataleg tp ON tp.id = s.tipus_pinso_id
+     ORDER BY s.nom`
+  )
+  return rows.map((r) => ({
+    ...r,
+    capacitatKg: r.capacitatKg !== null ? Number(r.capacitatKg) : null,
+    estocActualKg: Number(r.estocActualKg),
+    estocMinimKg: r.estocMinimKg !== null ? Number(r.estocMinimKg) : null,
+  }))
+}
+
+/**
+ * Crea una sitja nova.
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param params - Dades de la sitja
+ * @returns L'id de la sitja creada
+ *
+ * @remarks Control d'accés: Admin i Treballador.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function crearSitja(
+  ctx: TenantContext,
+  params: {
+    nom: string
+    ubicacioId: number
+    tipusPinsoId?: number
+    capacitatKg?: number
+    estocActualKg: number
+    estocMinimKg?: number
+  }
+): Promise<{ id: number }> {
+  const rows = await queryTenant<{ id: number }>(
+    ctx,
+    `INSERT INTO sitges (nom, ubicacio_id, tipus_pinso_id, capacitat_kg, estoc_actual_kg, estoc_minim_kg)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [
+      params.nom,
+      params.ubicacioId,
+      params.tipusPinsoId ?? null,
+      params.capacitatKg ?? null,
+      params.estocActualKg,
+      params.estocMinimKg ?? null,
+    ]
+  )
+  return rows[0]
+}
+
+/**
+ * Actualitza una sitja existent (la ubicació no es pot canviar).
+ *
+ * @remarks Control d'accés: Admin i Treballador.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function actualitzarSitja(
+  ctx: TenantContext,
+  id: number,
+  params: {
+    nom: string
+    tipusPinsoId?: number
+    capacitatKg?: number
+    estocActualKg: number
+    estocMinimKg?: number
+  }
+): Promise<void> {
+  await queryTenant(
+    ctx,
+    `UPDATE sitges
+     SET nom = $1, tipus_pinso_id = $2, capacitat_kg = $3, estoc_actual_kg = $4, estoc_minim_kg = $5
+     WHERE id = $6`,
+    [
+      params.nom,
+      params.tipusPinsoId ?? null,
+      params.capacitatKg ?? null,
+      params.estocActualKg,
+      params.estocMinimKg ?? null,
+      id,
+    ]
+  )
+}
+
+/**
+ * Retorna tots els magatzems de farratge amb el nom de la seva zona.
+ *
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function getMagatzems(ctx: TenantContext): Promise<MagatzemFarratge[]> {
+  const rows = await queryTenant<{
+    id: number
+    zonaId: number
+    nomZona: string
+    tipusFarratge: string
+    capacitatMaximaTones: string | null
+    estocActualTones: string
+    estocMinimTones: string | null
+    pesMitjaBalaKg: string | null
+    estat: 'Actiu' | 'Deshabilitat'
+  }>(
+    ctx,
+    `SELECT
+       mf.id,
+       mf.zona_id AS "zonaId",
+       z.nom      AS "nomZona",
+       mf.tipus_farratge AS "tipusFarratge",
+       mf.capacitat_maxima_tones AS "capacitatMaximaTones",
+       mf.estoc_actual_tones     AS "estocActualTones",
+       mf.estoc_minim_tones      AS "estocMinimTones",
+       mf.pes_mitja_bala_kg      AS "pesMitjaBalaKg",
+       mf.estat
+     FROM magatzems_farratge mf
+     JOIN zones_infraestructura z ON z.id = mf.zona_id
+     ORDER BY mf.tipus_farratge`
+  )
+  return rows.map((r) => ({
+    ...r,
+    capacitatMaximaTones: r.capacitatMaximaTones !== null ? Number(r.capacitatMaximaTones) : null,
+    estocActualTones: Number(r.estocActualTones),
+    estocMinimTones: r.estocMinimTones !== null ? Number(r.estocMinimTones) : null,
+    pesMitjaBalaKg: r.pesMitjaBalaKg !== null ? Number(r.pesMitjaBalaKg) : null,
+  }))
+}
+
+/**
+ * Crea un magatzem de farratge nou, dins d'una zona de tipus
+ * COBERT_EMMAGATZEMATGE.
+ *
+ * @remarks La BD rebutja la inserció (trigger trg_magatzem_zona_tipus,
+ * ja existent des del disseny original) si zonaId no és una zona
+ * COBERT_EMMAGATZEMATGE — l'endpoint intercepta aquest error i el
+ * tradueix a un 422, mateix patró ja aplicat a crearCort
+ * (src/app/api/infraestructura/corts/route.ts).
+ * @remarks Control d'accés: Admin i Treballador.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function crearMagatzem(
+  ctx: TenantContext,
+  params: {
+    zonaId: number
+    tipusFarratge: string
+    capacitatMaximaTones?: number
+    estocActualTones: number
+    estocMinimTones?: number
+    pesMitjaBalaKg?: number
+  }
+): Promise<{ id: number }> {
+  const rows = await queryTenant<{ id: number }>(
+    ctx,
+    `INSERT INTO magatzems_farratge (
+       zona_id, tipus_farratge, capacitat_maxima_tones,
+       estoc_actual_tones, estoc_minim_tones, pes_mitja_bala_kg
+     )
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [
+      params.zonaId,
+      params.tipusFarratge,
+      params.capacitatMaximaTones ?? null,
+      params.estocActualTones,
+      params.estocMinimTones ?? null,
+      params.pesMitjaBalaKg ?? null,
+    ]
+  )
+  return rows[0]
+}
+
+/**
+ * Actualitza un magatzem de farratge existent (la zona no es pot canviar).
+ *
+ * @remarks Control d'accés: Admin i Treballador.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function actualitzarMagatzem(
+  ctx: TenantContext,
+  id: number,
+  params: {
+    tipusFarratge: string
+    capacitatMaximaTones?: number
+    estocActualTones: number
+    estocMinimTones?: number
+    pesMitjaBalaKg?: number
+  }
+): Promise<void> {
+  await queryTenant(
+    ctx,
+    `UPDATE magatzems_farratge
+     SET tipus_farratge = $1, capacitat_maxima_tones = $2, estoc_actual_tones = $3,
+         estoc_minim_tones = $4, pes_mitja_bala_kg = $5
+     WHERE id = $6`,
+    [
+      params.tipusFarratge,
+      params.capacitatMaximaTones ?? null,
+      params.estocActualTones,
+      params.estocMinimTones ?? null,
+      params.pesMitjaBalaKg ?? null,
+      id,
+    ]
+  )
 }

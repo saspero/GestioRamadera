@@ -4,9 +4,7 @@ export type EstatAlerta = 'NORMAL' | 'BAIX' | 'ESGOTAT'
 export type TipusOrigen = 'sitja' | 'magatzem'
 
 /**
- * Magatzem o sitja amb l'estoc actual i l'estat d'alerta ja resolt
- * (reutilitza la vista v_estoc_magatzems, ja existent des del
- * lliurament del Dashboard).
+ * Magatzem o sitja amb l'estoc actual i l'estat d'alerta ja resolt.
  */
 export type EstocMagatzemComplet = {
   tipus: TipusOrigen
@@ -30,11 +28,15 @@ export type OrigenConsum = {
   pesMitjaBalaKg: number | null
 }
 
-/** Zona seleccionable com a destí (Nau/Cort/Pastura — sempre a nivell de zona). */
+/**
+ * Zona seleccionable com a destí (Nau d'animals o Pastura —
+ * excloent explícitament COBERT_EMMAGATZEMATGE, que no consumeix
+ * aliment, només l'emmagatzema).
+ */
 export type ZonaDesti = {
   id: number
   nom: string
-  tipusZona: 'NAU_ANIMALS' | 'COBERT_EMMAGATZEMATGE' | 'PASTURA'
+  tipusZona: 'NAU_ANIMALS' | 'PASTURA'
 }
 
 /** Catàlegs necessaris per al formulari de consums massius. */
@@ -51,4 +53,46 @@ export type RegistrarConsumInput = {
   quantitat: number
   unitat: UnitatMesura
   data: string
+}
+
+/** Component (ingredient) d'un tipus de pinso, amb el seu percentatge. */
+export type ComponentPinso = {
+  id: number
+  nomComponent: string
+  percentatge: number
+}
+
+/** Tipus de pinso del catàleg, amb la seva composició completa. */
+export type TipusPinso = {
+  id: number
+  codi: string
+  nom: string
+  components: ComponentPinso[]
+}
+
+/** Sitja gestionable (creació/edició), amb el nom del tipus de pinso per a la llista. */
+export type Sitja = {
+  id: number
+  nom: string
+  ubicacioId: number
+  nomUbicacio: string
+  tipusPinsoId: number | null
+  nomTipusPinso: string | null
+  capacitatKg: number | null
+  estocActualKg: number
+  estocMinimKg: number | null
+  estat: EstatMagatzem
+}
+
+/** Magatzem de farratge gestionable (creació/edició). */
+export type MagatzemFarratge = {
+  id: number
+  zonaId: number
+  nomZona: string
+  tipusFarratge: string
+  capacitatMaximaTones: number | null
+  estocActualTones: number
+  estocMinimTones: number | null
+  pesMitjaBalaKg: number | null
+  estat: EstatMagatzem
 }

@@ -33,5 +33,8 @@ export const queryKeys = {
   logistica: {
     estoc: ['logistica', 'estoc'] as const,
     catalegs: ['logistica', 'catalegs'] as const,
+    sitges: ['logistica', 'sitges'] as const,
+    magatzems: ['logistica', 'magatzems'] as const,
+    tipusPinso: ['logistica', 'tipus-pinso'] as const,
   },
 }
