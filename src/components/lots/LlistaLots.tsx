@@ -5,6 +5,8 @@ import { ChevronDown, ChevronRight, ArrowRightLeft } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDate } from '@/lib/format'
 import { queryKeys } from '@/lib/query/queryKeys'
+import { PaginacioControls } from '@/components/ui/PaginacioControls'
+import { usePaginacio } from '@/hooks/usePaginacio'
 import type { LotResum, AnimalDelLot } from '@/types/lots'
 
 type ListaLotsProps = {
@@ -108,21 +110,23 @@ function FilaLot({
  * les accions de moure animals
  * @param props.onMoureAnimal - Callback per obrir el modal de
  * moviment amb un animal concret preseleccionat
- * @returns Llista expansible amb el detall d'animals per lot
+ * @returns Llista expansible amb el detall d'animals per lot, paginada
  *
+ * @remarks PAGINACIÓ: usePaginacio() aplicada al nivell superior
+ * (la llista de lots), 25 per pàgina, només al client. El detall
+ * d'animals de cada lot expandit NO es pagina — un lot individual
+ * rarament té prou animals per necessitar-ho, i paginar-ho també
+ * complicaria la UX d'expandir/col·lapsar sense aportar gaire valor.
  * @remarks MIGRACIÓ REACT QUERY: el detall d'animals de cada lot es
  * carrega amb useQuery (queryKeys.lots.animals(lotId)), amb
- * `enabled` lligat a l'estat d'expansió — la primera vegada que
- * s'expandeix un lot es fa la petició, però si es torna a expandir
- * (col·lapsar i tornar a obrir) es reutilitza la cache sense tornar
- * a demanar-ho al servidor (fins que caduqui o s'invalidi per un
- * moviment). Cada fila necessita el seu propi hook, per això s'ha
- * extret com a component <FilaLot> — React no permet cridar
- * useQuery dins d'un bucle del component pare.
+ * `enabled` lligat a l'estat d'expansió.
  * @remarks Control d'accés: aquest component és de només presentació;
  * la protecció real és a l'endpoint de moviment.
  */
 export function LlistaLots({ lots, potEditar, onMoureAnimal }: ListaLotsProps) {
+  const { dadesPagina, paginaActual, totalPagines, totalFiles, paginaAnterior, paginaSeguent } =
+    usePaginacio(lots, 25)
+
   if (lots.length === 0) {
     return (
       <div className="text-center py-10 text-gray-500">
@@ -132,10 +136,22 @@ export function LlistaLots({ lots, potEditar, onMoureAnimal }: ListaLotsProps) {
   }
 
   return (
-    <div className="space-y-2">
-      {lots.map((lot) => (
-        <FilaLot key={lot.id} lot={lot} potEditar={potEditar} onMoureAnimal={onMoureAnimal} />
-      ))}
+    <div>
+      <div className="space-y-2">
+        {dadesPagina.map((lot) => (
+          <FilaLot key={lot.id} lot={lot} potEditar={potEditar} onMoureAnimal={onMoureAnimal} />
+        ))}
+      </div>
+
+      <div className="bg-white rounded-lg border border-gray-200 mt-2">
+        <PaginacioControls
+          paginaActual={paginaActual}
+          totalPagines={totalPagines}
+          totalFiles={totalFiles}
+          onAnterior={paginaAnterior}
+          onSeguent={paginaSeguent}
+        />
+      </div>
     </div>
   )
 }

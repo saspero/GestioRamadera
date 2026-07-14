@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { ArrowRightLeft, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { formatNumber } from '@/lib/format'
 import { CercadorRapid } from '@/components/shared/CercadorRapid'
@@ -8,6 +8,8 @@ import { IndicadorSupressio } from '@/components/shared/IndicadorSupressio'
 import { ModalMoureAnimals } from '@/components/lots/ModalMoureAnimals'
 import { FiltresAnimalsSelector, type ValorsFiltre } from '@/components/animals/FiltresAnimalsSelector'
 import { FitxaAnimalModal } from '@/components/animals/FitxaAnimalModal'
+import { PaginacioControls } from '@/components/ui/PaginacioControls'
+import { usePaginacio } from '@/hooks/usePaginacio'
 import type { AnimalActiu, EstatSalut } from '@/types/db'
 
 const COLORS_SALUT: Record<EstatSalut, string> = {
@@ -33,9 +35,9 @@ type TaulaAnimalsProps = {
 
 /**
  * Taula del llistat d'animals actius amb cercador, filtres en
- * cascada (Granja/Zona/Lot), ordenació de columnes, selecció
- * múltiple per moure a un lot, i obertura de la fitxa completa en
- * clicar una fila.
+ * cascada (Granja/Zona/Lot), ordenació de columnes, paginació,
+ * selecció múltiple per moure a un lot, i obertura de la fitxa
+ * completa en clicar una fila.
  *
  * @param props.animals - Animals a mostrar (ja filtrats pel backend si hi ha cerca de text)
  * @param props.cerca - Valor actual del cercador de DIB
@@ -43,8 +45,16 @@ type TaulaAnimalsProps = {
  * @param props.carregant - Indica si s'està carregant una nova cerca
  * @param props.potMoure - Si true, mostra checkboxes, "Moure a lot" i el botó de baixa a la fitxa
  * @param props.onAnimalsMoguts - Callback per recarregar després d'un moviment o una baixa
- * @returns Taula responsive amb filtres, ordenació i fitxa d'animal
+ * @returns Taula responsive amb filtres, ordenació, paginació i fitxa d'animal
  *
+ * @remarks PAGINACIÓ: aplicada amb usePaginacio()
+ * (src/hooks/usePaginacio.ts), 25 files per pàgina, NOMÉS al client
+ * — el backend ja retorna tot el dataset filtrat per cerca de text;
+ * el tall en pàgines es fa sobre `animalsOrdenats` (després de
+ * filtres i ordenació). "Seleccionar tots" només selecciona els
+ * animals de la pàgina actual, no de tot el dataset filtrat — evita
+ * confusió sobre quants animals s'han seleccionat realment quan
+ * n'hi ha més d'una pàgina.
  * @remarks Control d'accés: el llistat és visible per als 3 rols.
  * La selecció múltiple, el moviment de lot i el botó de baixa a la
  * fitxa només per a Admin i Veterinari — comprovació només visual,
@@ -53,9 +63,7 @@ type TaulaAnimalsProps = {
  * ÍNTEGRAMENT AL CLIENT sobre les dades ja carregades — no generen
  * cap petició addicional al backend (docs/08_modul_llistat_actius.md).
  * @remarks Multitenancy: no toca la BD directament; rep les dades
- * ja carregades des de la pàgina pare via GET /api/animals. El
- * moviment i la baixa passen per components compartits amb altres
- * mòduls (ModalMoureAnimals, FitxaAnimalModal → ModalBaixa).
+ * ja carregades des de la pàgina pare via GET /api/animals.
  */
 export function TaulaAnimals({
   animals,
@@ -97,6 +105,24 @@ export function TaulaAnimals({
     })
   }, [animalsFiltrats, ordre])
 
+  const {
+    dadesPagina: animalsPagina,
+    paginaActual,
+    totalPagines,
+    totalFiles,
+    anarAPagina,
+    paginaSeguent,
+    paginaAnterior,
+  } = usePaginacio(animalsOrdenats, 25)
+
+  // Torna a la pàgina 1 quan canvia la cerca, els filtres o l'ordre,
+  // per evitar quedar-se en una pàgina que ja no existeix o que
+  // mostra resultats d'un filtre anterior.
+  useEffect(() => {
+    anarAPagina(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cerca, filtres, ordre])
+
   function handleOrdenar(columna: ColumnaOrdenable) {
     setOrdre((prev) => {
       if (prev?.columna !== columna) return { columna, direccio: 'asc' }
@@ -120,9 +146,9 @@ export function TaulaAnimals({
 
   function toggleSeleccioTots() {
     setSeleccionats((prev) =>
-      prev.size === animalsOrdenats.length
-        ? new Set()
-        : new Set(animalsOrdenats.map((a) => a.id))
+      animalsPagina.every((a) => prev.has(a.id))
+        ? new Set([...prev].filter((id) => !animalsPagina.some((a) => a.id === id)))
+        : new Set([...prev, ...animalsPagina.map((a) => a.id)])
     )
   }
 
@@ -139,6 +165,9 @@ export function TaulaAnimals({
     { key: 'estatSalut', label: 'Estat de salut' },
     { key: 'edatDies', label: 'Edat (dies)', alinea: 'right' },
   ]
+
+  const totsSeleccionatsPagina =
+    animalsPagina.length > 0 && animalsPagina.every((a) => seleccionats.has(a.id))
 
   return (
     <div className="bg-white rounded-lg border border-gray-200">
@@ -173,9 +202,9 @@ export function TaulaAnimals({
                 <th className="px-4 py-2 w-8">
                   <input
                     type="checkbox"
-                    checked={animalsOrdenats.length > 0 && seleccionats.size === animalsOrdenats.length}
+                    checked={totsSeleccionatsPagina}
                     onChange={toggleSeleccioTots}
-                    aria-label="Seleccionar tots"
+                    aria-label="Seleccionar tots els d'aquesta pàgina"
                   />
                 </th>
               )}
@@ -200,14 +229,14 @@ export function TaulaAnimals({
                   Carregant...
                 </td>
               </tr>
-            ) : animalsOrdenats.length === 0 ? (
+            ) : animalsPagina.length === 0 ? (
               <tr>
                 <td colSpan={potMoure ? 7 : 6} className="px-4 py-6 text-center text-gray-500">
                   {cerca ? 'Cap animal coincideix amb la cerca.' : 'No hi ha animals actius.'}
                 </td>
               </tr>
             ) : (
-              animalsOrdenats.map((animal) => (
+              animalsPagina.map((animal) => (
                 <tr
                   key={animal.id}
                   className="border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer"
@@ -250,6 +279,14 @@ export function TaulaAnimals({
           </tbody>
         </table>
       </div>
+
+      <PaginacioControls
+        paginaActual={paginaActual}
+        totalPagines={totalPagines}
+        totalFiles={totalFiles}
+        onAnterior={paginaAnterior}
+        onSeguent={paginaSeguent}
+      />
 
       {modalMoureObert && (
         <ModalMoureAnimals

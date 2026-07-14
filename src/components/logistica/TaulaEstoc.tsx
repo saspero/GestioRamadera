@@ -1,6 +1,8 @@
 'use client'
 
 import { formatNumber } from '@/lib/format'
+import { PaginacioControls } from '@/components/ui/PaginacioControls'
+import { usePaginacio } from '@/hooks/usePaginacio'
 import type { EstocMagatzemComplet } from '@/types/logistica'
 
 type TaulaEstocProps = {
@@ -25,13 +27,18 @@ const COLORS_ALERTA: Record<string, string> = {
  * @param props.carregant - Indica si s'està carregant
  * @param props.potGestionar - Si true, mostra el toggle d'estat (només Admin)
  * @param props.onCanviarEstat - Callback en clicar el toggle
- * @returns Taula responsive amb columnes segons docs/09_modul_logistica_farratges.md, secció 5
+ * @returns Taula responsive amb columnes segons docs/09_modul_logistica_farratges.md, secció 5, paginada
  *
+ * @remarks PAGINACIÓ: usePaginacio(), 25 files per pàgina, només al
+ * client.
  * @remarks El toggle d'estat és exclusiu d'Admin
  * (docs/09_modul_logistica_farratges.md, secció 4.2) — Treballador
  * només consulta, sense poder desactivar espais.
  */
 export function TaulaEstoc({ estoc, carregant, potGestionar, onCanviarEstat }: TaulaEstocProps) {
+  const { dadesPagina, paginaActual, totalPagines, totalFiles, paginaAnterior, paginaSeguent } =
+    usePaginacio(estoc, 25)
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
       <table className="w-full text-sm">
@@ -53,14 +60,14 @@ export function TaulaEstoc({ estoc, carregant, potGestionar, onCanviarEstat }: T
                 Carregant...
               </td>
             </tr>
-          ) : estoc.length === 0 ? (
+          ) : dadesPagina.length === 0 ? (
             <tr>
               <td colSpan={potGestionar ? 7 : 6} className="px-4 py-6 text-center text-gray-500">
                 Cap magatzem donat d&apos;alta.
               </td>
             </tr>
           ) : (
-            estoc.map((item) => {
+            dadesPagina.map((item) => {
               const percentatge =
                 item.capacitat && item.capacitat > 0
                   ? Math.min(100, Math.round((item.estocActual / item.capacitat) * 100))
@@ -118,6 +125,14 @@ export function TaulaEstoc({ estoc, carregant, potGestionar, onCanviarEstat }: T
           )}
         </tbody>
       </table>
+
+      <PaginacioControls
+        paginaActual={paginaActual}
+        totalPagines={totalPagines}
+        totalFiles={totalFiles}
+        onAnterior={paginaAnterior}
+        onSeguent={paginaSeguent}
+      />
     </div>
   )
 }

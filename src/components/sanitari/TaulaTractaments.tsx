@@ -1,6 +1,8 @@
 'use client'
 
 import { formatDate, formatNumber } from '@/lib/format'
+import { PaginacioControls } from '@/components/ui/PaginacioControls'
+import { usePaginacio } from '@/hooks/usePaginacio'
 import type { TractamentAmbMedicament } from '@/types/sanitari'
 
 type TaulaTractamentsProps = {
@@ -14,8 +16,11 @@ type TaulaTractamentsProps = {
  *
  * @param props.tractaments - Tractaments a mostrar
  * @param props.carregant - Indica si s'està carregant
- * @returns Taula responsive amb l'històric de tractaments
+ * @returns Taula responsive amb l'històric de tractaments, paginat
  *
+ * @remarks PAGINACIÓ: usePaginacio(), 25 files per pàgina, només al
+ * client — l'historial de tractaments creix sense límit amb el
+ * temps, per això és una de les taules prioritzades.
  * @remarks docs/06_modul_sanitari.md, secció 4.3: mentre
  * data_alliberament sigui futura, l'animal no pot ser venut. Aquesta
  * taula mostra l'estat visualment (badge vermell) per a referència
@@ -23,6 +28,8 @@ type TaulaTractamentsProps = {
  */
 export function TaulaTractaments({ tractaments, carregant }: TaulaTractamentsProps) {
   const avui = new Date().toISOString().slice(0, 10)
+  const { dadesPagina, paginaActual, totalPagines, totalFiles, paginaAnterior, paginaSeguent } =
+    usePaginacio(tractaments, 25)
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
@@ -43,14 +50,14 @@ export function TaulaTractaments({ tractaments, carregant }: TaulaTractamentsPro
                 Carregant...
               </td>
             </tr>
-          ) : tractaments.length === 0 ? (
+          ) : dadesPagina.length === 0 ? (
             <tr>
               <td colSpan={5} className="px-4 py-6 text-center text-gray-500">
                 Cap tractament registrat.
               </td>
             </tr>
           ) : (
-            tractaments.map((t) => {
+            dadesPagina.map((t) => {
               const enSupressio = t.dataAlliberament !== null && t.dataAlliberament > avui
               return (
                 <tr key={t.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
@@ -77,6 +84,14 @@ export function TaulaTractaments({ tractaments, carregant }: TaulaTractamentsPro
           )}
         </tbody>
       </table>
+
+      <PaginacioControls
+        paginaActual={paginaActual}
+        totalPagines={totalPagines}
+        totalFiles={totalFiles}
+        onAnterior={paginaAnterior}
+        onSeguent={paginaSeguent}
+      />
     </div>
   )
 }
