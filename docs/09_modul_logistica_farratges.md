@@ -1,7 +1,7 @@
 # 09 — Mòdul de Logística, Farratges i Sitges
 
-> **Versió:** 1.0.0  
-> **Última actualització:** Juny de 2026  
+> **Versió:** 1.2.0  
+> **Última actualització:** Juliol de 2026  
 > **Basat en:** Disseny_Webapp_Gestió_Ramadera_Bovina_-_Mòdul_de_Logística_i_Farratges_V1.docx
 
 ---
@@ -15,6 +15,9 @@
 | Control d'estocs i alertes jeràrquiques (secció 3) | ✅ Implementat | Càlcul NORMAL/BAIX/ESGOTAT amb llindar específic o global |
 | Gestió d'estats (toggle Actiu/Deshabilitat) (secció 4) | ✅ Implementat | Exclusiu d'Admin |
 | Pantalla de Control d'Estoc (secció 5) | ✅ Implementat | Amb barra visual de capacitat |
+| Gestió de Sitges i Magatzems de farratge (secció 4b) | ✅ Implementat (juliol 2026) | CRUD complet — abans no existia cap interfície, calia SQL manual |
+| Catàleg de Tipus de Pinso amb components (secció 4c) | ✅ Implementat (juliol 2026) | Codi + nom + composició amb percentatge |
+| Filtre del Destí per tipus de zona (secció 2.1) | ✅ Corregit (juliol 2026) | Abans mostrava totes les zones sense filtrar, incloent Coberts d'emmagatzematge |
 
 ### 0.1. Decisions ampliades sobre el disseny original
 
@@ -23,6 +26,9 @@
 - **Rols mantinguts tal com al disseny original:** aquest és l'únic mòdul on Veterinari **no** té cap accés (ni lectura), a diferència de la resta de mòduls on s'ha ampliat a "només lectura". Decisió confirmada explícitament amb l'usuari.
 - **Estoc negatiu:** no es bloqueja el registre d'un consum si l'estoc quedaria negatiu (mateix criteri aplicat a Sanitari) — es mostra com a informació, no com a error bloquejant.
 - **v_estoc_magatzems no reutilitzada per a aquesta pantalla:** la vista existent (usada al Dashboard) filtra `WHERE estat = 'Actiu'`, pensada per a les alertes. La pantalla de Control d'Estoc necessita veure també els magatzems deshabilitats — s'ha creat una query pròpia amb la mateixa lògica de càlcul d'alerta, sense aquest filtre.
+- **Destí filtrat a Nau d'animals i Pastura (juliol 2026):** el desplegable de Destí del formulari de Consums Massius mostrava totes les zones sense filtrar, incloent Coberts d'emmagatzematge — que no consumeixen aliment, només l'emmagatzemen. Corregit perquè només mostri `NAU_ANIMALS` i `PASTURA`.
+- **"Origen buit" no era un bug (juliol 2026):** durant una revisió es va detectar que el desplegable d'Origen sortia sempre buit. Diagnosticat: no era un error de codi — mai havia existit cap interfície per crear sitges o magatzems de farratge, així que la BD estava simplement sense dades a `sitges`/`magatzems_farratge`. Es va construir una pantalla de gestió completa (secció 4b) per resoldre-ho de fons.
+- **Catàleg de tipus de pinso (juliol 2026):** `sitges.tipus_pinso` era un camp de text lliure sense cap catàleg gestionable. Es va substituir per `sitges.tipus_pinso_id`, una FK cap a la nova taula `tipus_pinso_cataleg` (codi + nom), amb la composició detallada a `component_pinso` (ingredient + percentatge). Vegeu secció 4c i `database/07_migracio_pinsos_magatzems.sql`.
 
 ---
 
@@ -46,7 +52,7 @@ Dissenyat per ser un formulari **net, directe i optimitzat** per a ús ràpid di
 | Camp | Tipus | Obligatori | Descripció |
 |------|-------|-----------|-----------|
 | **Origen** | Desplegable | ✅ | Magatzem o sitja d'on s'extreu l'aliment. **Només es mostren els magatzems en estat `Actiu`** |
-| **Destí** | Desplegable | ✅ | Nau, Cort o Zona de pastura on es diposita l'aliment |
+| **Destí** | Desplegable | ✅ | Nau d'animals o Zona de pastura on es diposita l'aliment. **Filtrat a `NAU_ANIMALS` i `PASTURA`** — un Cobert d'emmagatzematge no hi surt mai, ja que no consumeix aliment, només l'emmagatzema (corregit juliol 2026) |
 | **Quantitat** | Input numèric | ✅ | Xifra extreta del magatzem origen |
 | **Unitat de Mesura** | Desplegable | ✅ | `kg`, `Tones`, o `Unitats (Bales)` |
 | **Data** | Data | ✅ | Data del moviment (per defecte: avui) |
@@ -148,6 +154,56 @@ A la llista de magatzems, cada element disposa d'un **interruptor visual** per c
 
 ---
 
+## 4b. Pantalla: Gestió de Sitges i Magatzems de Farratge [NOU — juliol 2026]
+
+Fins juliol de 2026 no existia cap interfície per crear o editar sitges ni magatzems de farratge — només es podien donar d'alta manualment per SQL, cosa que en la pràctica significava que la majoria de tenants no en tenien cap, i el desplegable d'Origen del formulari de Consums Massius quedava buit.
+
+### 4b.1. Pestanya "Magatzems"
+
+Dues taules independents, cadascuna amb el seu botó de creació:
+
+**Sitges** (formulari): Nom, Granja (ubicació — no editable un cop creada), Tipus de pinso (desplegable del catàleg, opcional), Estoc actual (kg), Capacitat (kg, opcional), Estoc mínim (kg, opcional — si no s'informa, s'aplica el llindar global).
+
+**Magatzems de farratge** (formulari): Cobert d'emmagatzematge (zona de tipus `COBERT_EMMAGATZEMATGE` — no editable un cop creat), Tipus de farratge (text lliure, Ex: *Palla*, *Alfals*), Estoc actual (tones), Capacitat (tones, opcional), Estoc mínim (tones, opcional), Pes mitjà per bala (kg, opcional — necessari per a consums en unitats/bales).
+
+### 4b.2. Validació de zona
+
+Un magatzem de farratge només es pot crear dins d'una zona de tipus `COBERT_EMMAGATZEMATGE` — restricció ja existent a nivell de base de dades (trigger `trg_magatzem_zona_tipus`, docs/02_model_de_dades.md). El formulari filtra el desplegable de zones per mostrar només les vàlides; si igualment s'hi arribés amb una zona incorrecta (per exemple, via crida directa a l'API), el sistema ho rebutja amb un error clar.
+
+### 4b.3. Rols amb accés
+
+Admin i Treballador (els mateixos que ja tenen accés al mòdul Logística).
+
+---
+
+## 4c. Catàleg de Tipus de Pinso [NOU — juliol 2026]
+
+### 4c.1. Motivació
+
+El camp `tipus_pinso` d'una sitja era text lliure, sense cap catàleg gestionable ni informació sobre la composició del pinso. Es va substituir per un catàleg estructurat.
+
+### 4c.2. Camps del Tipus de Pinso
+
+| Camp | Tipus | Obligatori | Descripció |
+|------|-------|-----------|-----------|
+| **Codi** | Text curt | ✅ | Identificador curt, únic al tenant (Ex: *PI-ENGREIX-18*) |
+| **Nom** | Text | ✅ | Nom descriptiu |
+| **Components** | Llista dinàmica | ✅ (mínim 1) | Cada component té un nom (Ex: *Blat de moro*) i un percentatge (0-100) |
+
+### 4c.3. Validació de la composició
+
+La suma dels percentatges de tots els components es mostra en temps real a la interfície com a ajuda visual, però **no bloqueja el desat** si no arriba exactament a 100 — permet desar una composició encara incompleta mentre es va completant la fitxa.
+
+### 4c.4. Ús a les sitges
+
+Cada sitja pot (opcionalment) tenir assignat un tipus de pinso del catàleg. Aquest tipus apareix com a "Tipus" a la pantalla de Control d'Estoc (secció 5).
+
+### 4c.5. Rols amb accés
+
+Admin i Treballador.
+
+---
+
 ## 5. Pantalla: Control d'Estoc de Magatzems
 
 Vista de consulta que mostra l'estat actual de tots els espais d'emmagatzematge:
@@ -155,7 +211,7 @@ Vista de consulta que mostra l'estat actual de tots els espais d'emmagatzematge:
 | Columna | Descripció |
 |---------|-----------|
 | Nom del Magatzem / Sitja | Identificador |
-| Tipus | Farratge, Pinso, Llet en pols, etc. |
+| Tipus | Farratge (text lliure) per a magatzems; nom del tipus de pinso del catàleg per a sitges (o "—" si no s'ha assignat) |
 | Estoc Actual | En kg o tones, amb barra visual de capacitat |
 | Capacitat Màxima | Valor configurat a la fitxa |
 | % Ocupació | `(estoc_actual / capacitat_maxima) × 100` |
@@ -175,17 +231,26 @@ Vista de consulta que mostra l'estat actual de tots els espais d'emmagatzematge:
 | `consums_pinso_nau` | INSERT per consums de pinso de sitja |
 | `zones_infraestructura` | Lectura per desplegable de destí |
 | `configuracio_general` | Lectura del llindar d'estoc mínim global (fallback) |
+| `tipus_pinso_cataleg` | Lectura per al desplegable de tipus de pinso; alta/edició des de la pantalla de catàleg |
+| `component_pinso` | Alta/edició en crear o editar un tipus de pinso |
+| `ubicacions` | Lectura per al desplegable de granja en crear una sitja |
 | `public.audit_log` | Registre de moviments |
 
 > DDL complet a [`02_model_de_dades.md`](./02_model_de_dades.md), secció 3 (Logística).
 
 ---
 
-### 7. Nous endpoints:
+## 7. Endpoints
 
 | Endpoint | Mètode | Rol | Descripció |
 |---|---|---|---|
 | `/api/logistica/estoc` | GET | Admin, Treballador | Estoc complet (actius i deshabilitats) |
-| `/api/logistica/catalegs` | GET | Admin, Treballador | Orígens (actius) i destins per al formulari |
+| `/api/logistica/catalegs` | GET | Admin, Treballador | Orígens (actius) i destins per al formulari (destins filtrats a NAU_ANIMALS/PASTURA) |
 | `/api/logistica/consum` | POST | Admin, Treballador | Registra un consum (dual-write segons origen) |
 | `/api/logistica/estoc/[tipus]/[id]` | PATCH | Admin | Canvia l'estat Actiu/Deshabilitat |
+| `/api/logistica/sitges` | GET, POST | Admin, Treballador | Llistat i creació de sitges |
+| `/api/logistica/sitges/[id]` | PATCH | Admin, Treballador | Edició d'una sitja |
+| `/api/logistica/magatzems` | GET, POST | Admin, Treballador | Llistat i creació de magatzems de farratge |
+| `/api/logistica/magatzems/[id]` | PATCH | Admin, Treballador | Edició d'un magatzem |
+| `/api/logistica/tipus-pinso` | GET, POST | Admin, Treballador | Llistat i creació de tipus de pinso |
+| `/api/logistica/tipus-pinso/[id]` | PATCH | Admin, Treballador | Edició d'un tipus de pinso |

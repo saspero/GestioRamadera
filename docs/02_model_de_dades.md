@@ -1,7 +1,7 @@
 # 02 — Model de Dades (DDL PostgreSQL)
 
-> **Versió:** 2.0.0  
-> **Última actualització:** Juny de 2026  
+> **Versió:** 2.1.0  
+> **Última actualització:** Juliol de 2026  
 > **Motor:** PostgreSQL 16+  
 > **Hosting:** Supabase (PostgreSQL gestionat)
 
@@ -16,7 +16,7 @@ Tots els scripts SQL es troben a la carpeta `database/` del repositori.
 | 1 | [`database/01_schema_public.sql`](../database/01_schema_public.sql) | Una sola vegada en crear la plataforma |
 | 2 | [`database/03_rls_public.sql`](../database/03_rls_public.sql) | Una sola vegada, just després del punt 1 |
 | 3 | [`database/04_schema_login_attempts.sql`](../database/04_schema_login_attempts.sql) | Una sola vegada — taula de rate limiting del login |
-| 4 | [`database/02_schema_tenant_template.sql`](../database/02_schema_tenant_template.sql) | Una vegada per cada client nou (ja inclou RLS de les 19 taules) |
+| 4 | [`database/02_schema_tenant_template.sql`](../database/02_schema_tenant_template.sql) | Una vegada per cada client nou (ja inclou RLS de les 21 taules) |
 
 **Fitxers d'utilitat** (no formen part del desplegament normal):
 
@@ -64,6 +64,8 @@ postgres (instància)
 │   ├── corts
 │   ├── sitges
 │   ├── magatzems_farratge
+│   ├── tipus_pinso_cataleg     ← NOU (juliol 2026)
+│   ├── component_pinso         ← NOU (juliol 2026)
 │   ├── races_cataleg
 │   ├── lots
 │   ├── animals
@@ -95,6 +97,8 @@ postgres (instància)
 | 5 | Cerca de crotal sense índex optimitzat | Índex `GIN` + `pg_trgm` per a cerca parcial en temps real |
 | 6 | `actualitzat_el` s'actualitzava manualment | Funció `set_updated_at()` + triggers en totes les taules |
 | 7 | `actualitzat_el` innecessari a `presets_llet_pols` | Eliminat (els presets no es modifiquen, se'n creen de nous) |
+| 8 | `sitges.tipus_pinso` era text lliure sense catàleg gestionable | Nova taula `tipus_pinso_cataleg` (codi + nom) amb `component_pinso` (composició amb percentatge); `sitges.tipus_pinso` substituïda per `tipus_pinso_id` (FK) — `database/07_migracio_pinsos_magatzems.sql` |
+| 9 | `v_estoc_magatzems.estat_estoc` no coincidia amb el nom real de columna que consumeix el Dashboard (`estat_alerta`) | Documentació corregida — la columna sempre s'ha dit `estat_alerta` a la BD real; aquest document tenia un error de transcripció |
 
 ---
 
@@ -287,13 +291,46 @@ CREATE TRIGGER trg_corts_zona_tipus
 -- EMMAGATZEMATGE D'ALIMENTS
 -- ============================================================
 
+-- ------------------------------------------------------------
+-- Taula: tipus_pinso_cataleg  [NOU — juliol 2026]
+-- Catàleg de tipus de pinso gestionable, amb codi i composició
+-- ------------------------------------------------------------
+CREATE TABLE tipus_pinso_cataleg (
+    id       SERIAL PRIMARY KEY,
+    codi     VARCHAR(50)  NOT NULL UNIQUE,
+    nom      VARCHAR(255) NOT NULL,
+    creat_el TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE tipus_pinso_cataleg IS
+    'Catàleg de tipus de pinso disponibles al tenant, amb la seva composició a component_pinso.';
+COMMENT ON COLUMN tipus_pinso_cataleg.codi IS
+    'Codi curt identificatiu del tipus de pinso (Ex: "PI-ENGREIX-18"). Únic dins del tenant.';
+
+-- ------------------------------------------------------------
+-- Taula: component_pinso  [NOU — juliol 2026]
+-- Composició (ingredients + percentatge) de cada tipus de pinso
+-- ------------------------------------------------------------
+CREATE TABLE component_pinso (
+    id             SERIAL PRIMARY KEY,
+    tipus_pinso_id INTEGER      NOT NULL REFERENCES tipus_pinso_cataleg(id) ON DELETE CASCADE,
+    nom_component  VARCHAR(255) NOT NULL,
+    percentatge    DECIMAL(5,2) NOT NULL,
+    CONSTRAINT component_percentatge_valid CHECK (percentatge > 0 AND percentatge <= 100)
+);
+
+CREATE INDEX idx_component_pinso_tipus ON component_pinso(tipus_pinso_id);
+
+COMMENT ON TABLE component_pinso IS
+    'Ingredients que composen un tipus de pinso del catàleg, amb el seu percentatge. La suma dels percentatges d''un mateix tipus_pinso_id s''hauria d''aproximar a 100 — es valida a la capa d''aplicació, no amb un CHECK de BD (restricció multi-fila).';
+
 CREATE TABLE sitges (
     id              SERIAL PRIMARY KEY,
     ubicacio_id     INTEGER        NOT NULL REFERENCES ubicacions(id) ON DELETE RESTRICT,
     nom             VARCHAR(255)   NOT NULL,
     capacitat_kg    DECIMAL(12,2),
     estoc_actual_kg DECIMAL(12,2)  NOT NULL DEFAULT 0,
-    tipus_pinso     VARCHAR(100),
+    tipus_pinso_id  INTEGER        REFERENCES tipus_pinso_cataleg(id) ON DELETE RESTRICT,
     estoc_minim_kg  DECIMAL(12,2),
     estat           estat_magatzem_enum NOT NULL DEFAULT 'Actiu',
     creat_el        TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
@@ -305,6 +342,8 @@ CREATE TRIGGER trg_sitges_updated_at
     BEFORE UPDATE ON sitges
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+COMMENT ON COLUMN sitges.tipus_pinso_id IS
+    'Tipus de pinso emmagatzemat, referenciant tipus_pinso_cataleg. ON DELETE RESTRICT: no es pot eliminar un tipus de pinso del catàleg mentre hi hagi sitges que l''utilitzin. Abans (fins juliol 2026) era un camp de text lliure "tipus_pinso" sense catàleg.';
 COMMENT ON COLUMN sitges.estoc_minim_kg IS
     'Llindar d''alerta d''estoc mínim. Si NULL, hereta el valor de configuracio_general.estoc_minim_default_kg.';
 
@@ -750,7 +789,7 @@ SELECT
     'sitja'              AS tipus,
     s.id,
     s.nom,
-    s.tipus_pinso        AS tipus_producte,
+    tp.nom               AS tipus_producte,
     s.estoc_actual_kg    AS estoc_actual,
     'kg'                 AS unitat,
     COALESCE(s.estoc_minim_kg, cg.estoc_minim_default_kg) AS llindar_alerta,
@@ -761,8 +800,9 @@ SELECT
         WHEN s.estoc_actual_kg <= COALESCE(s.estoc_minim_kg, cg.estoc_minim_default_kg)
              THEN 'Baix'
         ELSE 'Normal'
-    END AS estat_estoc
+    END AS estat_alerta
 FROM sitges s
+LEFT JOIN tipus_pinso_cataleg tp ON tp.id = s.tipus_pinso_id
 CROSS JOIN configuracio_general cg
 WHERE s.estat = 'Actiu'
 
@@ -783,12 +823,14 @@ SELECT
         WHEN mf.estoc_actual_tones <= COALESCE(mf.estoc_minim_tones, cg.estoc_minim_default_tones)
              THEN 'Baix'
         ELSE 'Normal'
-    END AS estat_estoc
+    END AS estat_alerta
 FROM magatzems_farratge mf
 JOIN zones_infraestructura z ON z.id = mf.zona_id
 CROSS JOIN configuracio_general cg
 WHERE mf.estat = 'Actiu';
 ```
+
+> **Nota (juliol 2026):** la columna d'alerta d'aquesta vista es diu `estat_alerta` — versions anteriors d'aquest document la documentaven erròniament com `estat_estoc`, tot i que la base de dades real sempre l'havia tingut com `estat_alerta`. Aquest error de transcripció va provocar un error 500 real al Dashboard (`column "estat_alerta" does not exist`) quan es va recrear la vista seguint aquest document sense verificar-ho contra la BD desplegada.
 
 ---
 
@@ -811,3 +853,6 @@ WHERE mf.estat = 'Actiu';
 | Presets immutables (nou preu = nou preset) | `actiu = FALSE` sense modificar l'existent |
 | Cerca parcial de crotal optimitzada | Índex `GIN` amb `pg_trgm` |
 | Races globals protegides | Camp `es_global = TRUE` (lògica de protecció a l'aplicació) |
+| Percentatge de component de pinso vàlid (0-100) | `CHECK` constraint a `component_pinso` |
+| Codi de tipus de pinso únic per tenant | `UNIQUE` constraint a `tipus_pinso_cataleg.codi` |
+| No es pot eliminar un tipus de pinso en ús | `ON DELETE RESTRICT` de `sitges.tipus_pinso_id` |
