@@ -37,4 +37,10 @@ export const queryKeys = {
     magatzems: ['logistica', 'magatzems'] as const,
     tipusPinso: ['logistica', 'tipus-pinso'] as const,
   },
+  arxiu: {
+    /** Inclou els filtres a la clau perquè cada combinació de cerca/motiu/dates es cachegi per separat. */
+    llistat: (cerca: string, motiu: string, dataDes: string, dataFins: string) =>
+      ['arxiu', 'llistat', cerca, motiu, dataDes, dataFins] as const,
+    fitxa: (id: number) => ['arxiu', 'fitxa', id] as const,
+  },
 }
