@@ -43,4 +43,9 @@ export const queryKeys = {
       ['arxiu', 'llistat', cerca, motiu, dataDes, dataFins] as const,
     fitxa: (id: number) => ['arxiu', 'fitxa', id] as const,
   },
+  configuracio: {
+    usuaris: ['configuracio', 'usuaris'] as const,
+    races: ['configuracio', 'races'] as const,
+    general: ['configuracio', 'general'] as const,
+  },
 }
