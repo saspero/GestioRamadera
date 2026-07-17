@@ -91,22 +91,42 @@ export async function getEstocComplet(ctx: TenantContext): Promise<EstocMagatzem
  * @returns Orígens i destins seleccionables
  *
  * @remarks Destí filtrat a NAU_ANIMALS i PASTURA únicament — un
- * COBERT_EMMAGATZEMATGE no consumeix aliment, només l'emmagatzema,
- * per tant mai té sentit com a destí d'un consum (bug corregit:
- * abans es mostraven totes les zones sense filtrar).
+ * COBERT_EMMAGATZEMATGE no consumeix aliment, només l'emmagatzema.
+ * @remarks Cada origen inclou zonaVinculadaId/nomZonaVinculada
+ * (database/09_migracio_vinculacio_zona.sql) — quan un origen té
+ * una nau/pastura vinculada, el client precompleta i bloqueja el
+ * Destí automàticament amb aquest valor.
  * @remarks Control d'accés: Admin i Treballador.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function getCatalegsConsum(ctx: TenantContext): Promise<CatalegsConsum> {
   const [sitges, magatzems, zones] = await Promise.all([
-    queryTenant<{ id: number; nom: string }>(
+    queryTenant<{ id: number; nom: string; zonaVinculadaId: number | null; nomZonaVinculada: string | null }>(
       ctx,
-      `SELECT id, nom FROM sitges WHERE estat = 'Actiu' ORDER BY nom`
+      `SELECT s.id, s.nom,
+              s.zona_vinculada_id AS "zonaVinculadaId",
+              z.nom AS "nomZonaVinculada"
+       FROM sitges s
+       LEFT JOIN zones_infraestructura z ON z.id = s.zona_vinculada_id
+       WHERE s.estat = 'Actiu'
+       ORDER BY s.nom`
     ),
-    queryTenant<{ id: number; nom: string; pesMitjaBalaKg: string | null }>(
+    queryTenant<{
+      id: number
+      nom: string
+      pesMitjaBalaKg: string | null
+      zonaVinculadaId: number | null
+      nomZonaVinculada: string | null
+    }>(
       ctx,
-      `SELECT id, tipus_farratge AS nom, pes_mitja_bala_kg AS "pesMitjaBalaKg"
-       FROM magatzems_farratge WHERE estat = 'Actiu' ORDER BY tipus_farratge`
+      `SELECT mf.id, mf.tipus_farratge AS nom,
+              mf.pes_mitja_bala_kg AS "pesMitjaBalaKg",
+              mf.zona_vinculada_id AS "zonaVinculadaId",
+              z.nom AS "nomZonaVinculada"
+       FROM magatzems_farratge mf
+       LEFT JOIN zones_infraestructura z ON z.id = mf.zona_vinculada_id
+       WHERE mf.estat = 'Actiu'
+       ORDER BY mf.tipus_farratge`
     ),
     queryTenant<{ id: number; nom: string; tipusZona: 'NAU_ANIMALS' | 'PASTURA' }>(
       ctx,
@@ -119,12 +139,21 @@ export async function getCatalegsConsum(ctx: TenantContext): Promise<CatalegsCon
 
   return {
     origens: [
-      ...sitges.map((s) => ({ tipus: 'sitja' as const, id: s.id, nom: s.nom, pesMitjaBalaKg: null })),
+      ...sitges.map((s) => ({
+        tipus: 'sitja' as const,
+        id: s.id,
+        nom: s.nom,
+        pesMitjaBalaKg: null,
+        zonaVinculadaId: s.zonaVinculadaId,
+        nomZonaVinculada: s.nomZonaVinculada,
+      })),
       ...magatzems.map((m) => ({
         tipus: 'magatzem' as const,
         id: m.id,
         nom: m.nom,
         pesMitjaBalaKg: m.pesMitjaBalaKg !== null ? Number(m.pesMitjaBalaKg) : null,
+        zonaVinculadaId: m.zonaVinculadaId,
+        nomZonaVinculada: m.nomZonaVinculada,
       })),
     ],
     destins: zones,
@@ -356,6 +385,8 @@ export async function getSitges(ctx: TenantContext): Promise<Sitja[]> {
     capacitatKg: string | null
     estocActualKg: string
     estocMinimKg: string | null
+    zonaVinculadaId: number | null
+    nomZonaVinculada: string | null
     estat: 'Actiu' | 'Deshabilitat'
   }>(
     ctx,
@@ -368,10 +399,13 @@ export async function getSitges(ctx: TenantContext): Promise<Sitja[]> {
        s.capacitat_kg AS "capacitatKg",
        s.estoc_actual_kg AS "estocActualKg",
        s.estoc_minim_kg  AS "estocMinimKg",
+       s.zona_vinculada_id AS "zonaVinculadaId",
+       zv.nom AS "nomZonaVinculada",
        s.estat
      FROM sitges s
      JOIN ubicacions u ON u.id = s.ubicacio_id
      LEFT JOIN tipus_pinso_cataleg tp ON tp.id = s.tipus_pinso_id
+     LEFT JOIN zones_infraestructura zv ON zv.id = s.zona_vinculada_id
      ORDER BY s.nom`
   )
   return rows.map((r) => ({
@@ -389,6 +423,9 @@ export async function getSitges(ctx: TenantContext): Promise<Sitja[]> {
  * @param params - Dades de la sitja
  * @returns L'id de la sitja creada
  *
+ * @remarks zonaVinculadaId (opcional): la BD valida amb un trigger
+ * (trg_sitges_zona_vinculada) que sigui NAU_ANIMALS o PASTURA —
+ * l'endpoint intercepta l'error si no ho és i el tradueix a un 422.
  * @remarks Control d'accés: Admin i Treballador.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
@@ -401,12 +438,13 @@ export async function crearSitja(
     capacitatKg?: number
     estocActualKg: number
     estocMinimKg?: number
+    zonaVinculadaId?: number
   }
 ): Promise<{ id: number }> {
   const rows = await queryTenant<{ id: number }>(
     ctx,
-    `INSERT INTO sitges (nom, ubicacio_id, tipus_pinso_id, capacitat_kg, estoc_actual_kg, estoc_minim_kg)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO sitges (nom, ubicacio_id, tipus_pinso_id, capacitat_kg, estoc_actual_kg, estoc_minim_kg, zona_vinculada_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id`,
     [
       params.nom,
@@ -415,6 +453,7 @@ export async function crearSitja(
       params.capacitatKg ?? null,
       params.estocActualKg,
       params.estocMinimKg ?? null,
+      params.zonaVinculadaId ?? null,
     ]
   )
   return rows[0]
@@ -423,6 +462,8 @@ export async function crearSitja(
 /**
  * Actualitza una sitja existent (la ubicació no es pot canviar).
  *
+ * @remarks zonaVinculadaId (opcional) validada pel mateix trigger
+ * que crearSitja.
  * @remarks Control d'accés: Admin i Treballador.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
@@ -435,19 +476,22 @@ export async function actualitzarSitja(
     capacitatKg?: number
     estocActualKg: number
     estocMinimKg?: number
+    zonaVinculadaId?: number
   }
 ): Promise<void> {
   await queryTenant(
     ctx,
     `UPDATE sitges
-     SET nom = $1, tipus_pinso_id = $2, capacitat_kg = $3, estoc_actual_kg = $4, estoc_minim_kg = $5
-     WHERE id = $6`,
+     SET nom = $1, tipus_pinso_id = $2, capacitat_kg = $3, estoc_actual_kg = $4,
+         estoc_minim_kg = $5, zona_vinculada_id = $6
+     WHERE id = $7`,
     [
       params.nom,
       params.tipusPinsoId ?? null,
       params.capacitatKg ?? null,
       params.estocActualKg,
       params.estocMinimKg ?? null,
+      params.zonaVinculadaId ?? null,
       id,
     ]
   )
@@ -468,6 +512,8 @@ export async function getMagatzems(ctx: TenantContext): Promise<MagatzemFarratge
     estocActualTones: string
     estocMinimTones: string | null
     pesMitjaBalaKg: string | null
+    zonaVinculadaId: number | null
+    nomZonaVinculada: string | null
     estat: 'Actiu' | 'Deshabilitat'
   }>(
     ctx,
@@ -480,9 +526,12 @@ export async function getMagatzems(ctx: TenantContext): Promise<MagatzemFarratge
        mf.estoc_actual_tones     AS "estocActualTones",
        mf.estoc_minim_tones      AS "estocMinimTones",
        mf.pes_mitja_bala_kg      AS "pesMitjaBalaKg",
+       mf.zona_vinculada_id      AS "zonaVinculadaId",
+       zv.nom                    AS "nomZonaVinculada",
        mf.estat
      FROM magatzems_farratge mf
      JOIN zones_infraestructura z ON z.id = mf.zona_id
+     LEFT JOIN zones_infraestructura zv ON zv.id = mf.zona_vinculada_id
      ORDER BY mf.tipus_farratge`
   )
   return rows.map((r) => ({
@@ -498,11 +547,10 @@ export async function getMagatzems(ctx: TenantContext): Promise<MagatzemFarratge
  * Crea un magatzem de farratge nou, dins d'una zona de tipus
  * COBERT_EMMAGATZEMATGE.
  *
- * @remarks La BD rebutja la inserció (trigger trg_magatzem_zona_tipus,
- * ja existent des del disseny original) si zonaId no és una zona
- * COBERT_EMMAGATZEMATGE — l'endpoint intercepta aquest error i el
- * tradueix a un 422, mateix patró ja aplicat a crearCort
- * (src/app/api/infraestructura/corts/route.ts).
+ * @remarks La BD rebutja la inserció (trigger trg_magatzem_zona_tipus)
+ * si zonaId no és una zona COBERT_EMMAGATZEMATGE; i (trigger
+ * trg_magatzem_zona_vinculada) si zonaVinculadaId no és NAU_ANIMALS
+ * o PASTURA — l'endpoint intercepta ambdós errors i els tradueix a 422.
  * @remarks Control d'accés: Admin i Treballador.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
@@ -515,15 +563,16 @@ export async function crearMagatzem(
     estocActualTones: number
     estocMinimTones?: number
     pesMitjaBalaKg?: number
+    zonaVinculadaId?: number
   }
 ): Promise<{ id: number }> {
   const rows = await queryTenant<{ id: number }>(
     ctx,
     `INSERT INTO magatzems_farratge (
        zona_id, tipus_farratge, capacitat_maxima_tones,
-       estoc_actual_tones, estoc_minim_tones, pes_mitja_bala_kg
+       estoc_actual_tones, estoc_minim_tones, pes_mitja_bala_kg, zona_vinculada_id
      )
-     VALUES ($1, $2, $3, $4, $5, $6)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id`,
     [
       params.zonaId,
@@ -532,6 +581,7 @@ export async function crearMagatzem(
       params.estocActualTones,
       params.estocMinimTones ?? null,
       params.pesMitjaBalaKg ?? null,
+      params.zonaVinculadaId ?? null,
     ]
   )
   return rows[0]
@@ -552,21 +602,83 @@ export async function actualitzarMagatzem(
     estocActualTones: number
     estocMinimTones?: number
     pesMitjaBalaKg?: number
+    zonaVinculadaId?: number
   }
 ): Promise<void> {
   await queryTenant(
     ctx,
     `UPDATE magatzems_farratge
      SET tipus_farratge = $1, capacitat_maxima_tones = $2, estoc_actual_tones = $3,
-         estoc_minim_tones = $4, pes_mitja_bala_kg = $5
-     WHERE id = $6`,
+         estoc_minim_tones = $4, pes_mitja_bala_kg = $5, zona_vinculada_id = $6
+     WHERE id = $7`,
     [
       params.tipusFarratge,
       params.capacitatMaximaTones ?? null,
       params.estocActualTones,
       params.estocMinimTones ?? null,
       params.pesMitjaBalaKg ?? null,
+      params.zonaVinculadaId ?? null,
       id,
     ]
   )
+}
+
+/**
+ * Registra una entrada d'estoc repartida manualment entre diversos
+ * silos o magatzems del mateix tipus (Ex: un camió de 16 tones
+ * dividit entre 3 sitges, amb la quantitat exacta indicada per l'usuari
+ * per a cadascuna).
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param params - Tipus (sitja/magatzem) i repartiment (id + quantitat per fila)
+ * @returns Nombre de magatzems/sitges actualitzats
+ *
+ * @remarks A diferència de registrarConsum, aquesta operació NO
+ * escriu cap moviment/consum — només incrementa `estoc_actual_kg` o
+ * `estoc_actual_tones` de cada destinatari. No hi ha cap animal
+ * implicat en una entrada d'estoc (l'aliment encara no s'ha
+ * consumit), per això no té sentit cap taula de "moviment" aquí —
+ * la traçabilitat de l'entrada queda registrada a public.audit_log
+ * (via auditLog, cridat des de l'endpoint).
+ * @remarks Control d'accés: Admin i Treballador.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path. Tot el
+ * repartiment s'aplica en una única transacció — si una fila fallés,
+ * cap increment es faria efectiu.
+ */
+export async function registrarEntradaEstoc(
+  ctx: TenantContext,
+  params: { tipus: 'sitja' | 'magatzem'; repartiment: { id: number; quantitat: number }[] }
+): Promise<{ nombreActualitzats: number }> {
+  const ids = params.repartiment.map((r) => r.id)
+  const quantitats = params.repartiment.map((r) => r.quantitat)
+
+  if (params.tipus === 'sitja') {
+    const rows = await queryTenant<{ id: number }>(
+      ctx,
+      `WITH repartiment AS (
+         SELECT * FROM UNNEST($1::integer[], $2::decimal[]) AS t(id, quantitat)
+       )
+       UPDATE sitges s
+       SET estoc_actual_kg = s.estoc_actual_kg + r.quantitat
+       FROM repartiment r
+       WHERE s.id = r.id
+       RETURNING s.id`,
+      [ids, quantitats]
+    )
+    return { nombreActualitzats: rows.length }
+  }
+
+  const rows = await queryTenant<{ id: number }>(
+    ctx,
+    `WITH repartiment AS (
+       SELECT * FROM UNNEST($1::integer[], $2::decimal[]) AS t(id, quantitat)
+     )
+     UPDATE magatzems_farratge mf
+     SET estoc_actual_tones = mf.estoc_actual_tones + r.quantitat
+     FROM repartiment r
+     WHERE mf.id = r.id
+     RETURNING mf.id`,
+    [ids, quantitats]
+  )
+  return { nombreActualitzats: rows.length }
 }

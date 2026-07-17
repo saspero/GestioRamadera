@@ -19,13 +19,20 @@ export type EstocMagatzemComplet = {
   estatAlerta: EstatAlerta
 }
 
-/** Origen seleccionable al formulari de consums massius. */
+/**
+ * Origen seleccionable al formulari de consums massius.
+ * @remarks zonaVinculadaId/nomZonaVinculada: si l'origen té una nau
+ * o pastura vinculada, el Destí del formulari es precompleta i
+ * bloqueja automàticament amb aquest valor.
+ */
 export type OrigenConsum = {
   tipus: TipusOrigen
   id: number
   nom: string
   /** Present només si tipus==='magatzem'; necessari per a la lògica de bales. */
   pesMitjaBalaKg: number | null
+  zonaVinculadaId: number | null
+  nomZonaVinculada: string | null
 }
 
 /**
@@ -55,6 +62,18 @@ export type RegistrarConsumInput = {
   data: string
 }
 
+/** Una fila del repartiment manual d'una entrada d'estoc. */
+export type FilaEntradaEstoc = {
+  id: number
+  quantitat: number
+}
+
+/** Payload per registrar una entrada d'estoc repartida entre diversos silos/magatzems. */
+export type RegistrarEntradaEstocInput = {
+  tipus: TipusOrigen
+  repartiment: FilaEntradaEstoc[]
+}
+
 /** Component (ingredient) d'un tipus de pinso, amb el seu percentatge. */
 export type ComponentPinso = {
   id: number
@@ -81,6 +100,8 @@ export type Sitja = {
   capacitatKg: number | null
   estocActualKg: number
   estocMinimKg: number | null
+  zonaVinculadaId: number | null
+  nomZonaVinculada: string | null
   estat: EstatMagatzem
 }
 
@@ -94,5 +115,7 @@ export type MagatzemFarratge = {
   estocActualTones: number
   estocMinimTones: number | null
   pesMitjaBalaKg: number | null
+  zonaVinculadaId: number | null
+  nomZonaVinculada: string | null
   estat: EstatMagatzem
 }

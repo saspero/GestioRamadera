@@ -43,8 +43,14 @@ export function ModalMagatzem({ magatzemExistent, onTancar, onSalvat }: ModalMag
       .filter((z) => z.tipusZona === 'COBERT_EMMAGATZEMATGE')
       .map((z) => ({ ...z, nomUbicacio: u.nom }))
   )
+  const zonesConsum = ubicacions.flatMap((u) =>
+    u.zones
+      .filter((z) => z.tipusZona === 'NAU_ANIMALS' || z.tipusZona === 'PASTURA')
+      .map((z) => ({ ...z, nomUbicacio: u.nom }))
+  )
 
   const [zonaId, setZonaId] = useState<number | ''>(magatzemExistent?.zonaId ?? '')
+  const [zonaVinculadaId, setZonaVinculadaId] = useState<number | ''>(magatzemExistent?.zonaVinculadaId ?? '')
   const [tipusFarratge, setTipusFarratge] = useState(magatzemExistent?.tipusFarratge ?? '')
   const [capacitatMaximaTones, setCapacitatMaximaTones] = useState(
     magatzemExistent?.capacitatMaximaTones != null ? String(magatzemExistent.capacitatMaximaTones) : ''
@@ -70,6 +76,7 @@ export function ModalMagatzem({ magatzemExistent, onTancar, onSalvat }: ModalMag
         estocActualTones: Number(estocActualTones),
         estocMinimTones: estocMinimTones.trim() ? Number(estocMinimTones) : undefined,
         pesMitjaBalaKg: pesMitjaBalaKg.trim() ? Number(pesMitjaBalaKg) : undefined,
+        zonaVinculadaId: zonaVinculadaId || undefined,
       }
       const url = magatzemExistent
         ? `/api/logistica/magatzems/${magatzemExistent.id}`
@@ -201,6 +208,24 @@ export function ModalMagatzem({ magatzemExistent, onTancar, onSalvat }: ModalMag
               disabled={mutacio.isPending}
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Nau vinculada
+            <span className="font-normal text-gray-400"> (precompleta el Destí als consums)</span>
+          </label>
+          <select
+            value={zonaVinculadaId}
+            onChange={(e) => setZonaVinculadaId(e.target.value ? Number(e.target.value) : '')}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
+            disabled={mutacio.isPending}
+          >
+            <option value="">Sense vincular</option>
+            {zonesConsum.map((z) => (
+              <option key={z.id} value={z.id}>{z.nomUbicacio} — {z.nom}</option>
+            ))}
+          </select>
         </div>
 
         {mutacio.isError && (

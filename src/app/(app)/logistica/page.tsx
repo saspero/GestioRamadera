@@ -10,6 +10,7 @@ import { ModalConsumMassiu } from '@/components/logistica/ModalConsumMassiu'
 import { ModalSitja } from '@/components/logistica/ModalSitja'
 import { ModalMagatzem } from '@/components/logistica/ModalMagatzem'
 import { ModalTipusPinso } from '@/components/logistica/ModalTipusPinso'
+import { ModalEntradaEstoc } from '@/components/logistica/ModalEntradaEstoc'
 import { useSessio } from '@/lib/session/SessioContext'
 import { queryKeys } from '@/lib/query/queryKeys'
 import { toastExit, toastError } from '@/lib/toast/toastHelpers'
@@ -18,25 +19,30 @@ import type { EstocMagatzemComplet, Sitja, MagatzemFarratge, TipusPinso } from '
 type Vista = 'estoc' | 'magatzems' | 'pinsos'
 
 /**
- * Pàgina del mòdul Logística: Control d'Estoc, gestió de Magatzems
- * (sitges + magatzems de farratge) i catàleg de Tipus de Pinso.
+ * Pàgina del mòdul Magatzems (fins juliol 2026, "Logística i
+ * Farratges" — rename display-only, confirmat amb l'usuari): Control
+ * d'Estoc, gestió de Sitges/Magatzems, i catàleg de Tipus de Pinso.
  *
  * @returns Pàgina amb selector de vista i les taules/modals corresponents
  *
- * @remarks Secció "Magatzems" i "Tipus de pinso" afegides per resoldre
- * un buit real: fins ara no existia cap interfície per crear sitges
- * ni magatzems de farratge — el desplegable d'Origen del formulari
- * de Consums Massius quedava sempre buit perquè aquestes taules
- * només es podien omplir manualment per SQL.
- * @remarks El desplegable de Destí de ModalConsumMassiu ja filtra
- * per NAU_ANIMALS i PASTURA (bug corregit — abans mostrava també
- * COBERT_EMMAGATZEMATGE, que no consumeix aliment).
+ * @remarks Rename NOMÉS visual (títol, pestanyes, aquest fitxer) —
+ * la ruta es manté `/logistica` i totes les rutes d'API
+ * `/api/logistica/*` no canvien, per evitar trencar res que hi
+ * apunti (menuItems.ts actualitzat amb la nova etiqueta però mateix
+ * href).
+ * @remarks Nou botó "Registrar entrada" a la pestanya Magatzems:
+ * permet repartir manualment una entrada d'estoc (Ex: un camió)
+ * entre diversos silos/magatzems d'un sol cop (ModalEntradaEstoc).
+ * @remarks Vinculació nau/pastura (database/09_migracio_vinculacio_zona.sql):
+ * ModalSitja i ModalMagatzem ara permeten vincular opcionalment una
+ * nau/pastura; quan hi ha vinculació, ModalConsumMassiu precompleta
+ * i bloqueja el Destí automàticament.
  * @remarks Control d'accés: Admin i Treballador. Veterinari sense
  * accés en absolut a tot el mòdul. El toggle d'estat a Control
  * d'Estoc segueix sent exclusiu d'Admin; la gestió de
- * magatzems/sitges/pinsos és Admin i Treballador (decisió confirmada).
+ * magatzems/sitges/pinsos/entrades és Admin i Treballador.
  */
-export default function LogisticaPage() {
+export default function MagatzemsPage() {
   const { rol } = useSessio()
   const queryClient = useQueryClient()
   const potGestionar = rol === 'Admin' || rol === 'Treballador'
@@ -47,6 +53,7 @@ export default function LogisticaPage() {
   const [modalSitja, setModalSitja] = useState<{ existent?: Sitja } | null>(null)
   const [modalMagatzem, setModalMagatzem] = useState<{ existent?: MagatzemFarratge } | null>(null)
   const [modalTipusPinso, setModalTipusPinso] = useState<{ existent?: TipusPinso } | null>(null)
+  const [modalEntradaObert, setModalEntradaObert] = useState(false)
 
   const { data: estoc = [], isLoading: carregantEstoc } = useQuery<EstocMagatzemComplet[]>({
     queryKey: queryKeys.logistica.estoc,
@@ -102,7 +109,7 @@ export default function LogisticaPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-gray-900">Logística i Farratges</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Magatzems</h1>
         {potGestionar && vista === 'estoc' && (
           <button
             onClick={() => setModalConsumObert(true)}
@@ -115,6 +122,14 @@ export default function LogisticaPage() {
         )}
         {potGestionar && vista === 'magatzems' && (
           <div className="flex gap-2">
+            <button
+              onClick={() => setModalEntradaObert(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300
+                         hover:bg-gray-50 text-gray-700 font-medium rounded-lg min-h-[44px]"
+            >
+              <Plus size={18} aria-hidden="true" />
+              Registrar entrada
+            </button>
             <button
               onClick={() => setModalSitja({})}
               className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300
@@ -221,6 +236,13 @@ export default function LogisticaPage() {
           tipusExistent={modalTipusPinso.existent}
           onTancar={() => setModalTipusPinso(null)}
           onSalvat={() => setModalTipusPinso(null)}
+        />
+      )}
+
+      {modalEntradaObert && (
+        <ModalEntradaEstoc
+          onTancar={() => setModalEntradaObert(false)}
+          onRegistrat={() => setModalEntradaObert(false)}
         />
       )}
     </div>

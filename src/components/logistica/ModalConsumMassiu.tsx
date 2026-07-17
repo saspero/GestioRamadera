@@ -32,6 +32,13 @@ type ModalConsumMassiuProps = {
  * @remarks Lògica de bales (secció 2.2): quan es tria 'Unitats' i
  * l'origen té pesMitjaBalaKg configurat, es mostra el pes equivalent
  * calculat abans de confirmar.
+ * @remarks Zona vinculada (database/09_migracio_vinculacio_zona.sql):
+ * si l'origen seleccionat té una nau/pastura vinculada
+ * (zonaVinculadaId), el camp Destí es precompleta i bloqueja
+ * automàticament amb aquest valor — el registre del consum en si
+ * segueix sent una acció manual (quantitat + data), només s'estalvia
+ * haver de triar el destí cada vegada i s'evita seleccionar-ne un
+ * d'incorrecte.
  * @remarks Control d'accés: només es munta des de pantalles ja
  * protegides per a Admin/Treballador.
  */
@@ -63,7 +70,14 @@ export function ModalConsumMassiu({ onTancar, onRegistrat }: ModalConsumMassiuPr
     if (nouOrigen?.tipus === 'sitja') {
       setUnitat('kg')
     }
+    // Si l'origen té una nau vinculada, el Destí es precompleta
+    // automàticament (i es bloqueja a la UI) — decisió confirmada
+    // amb l'usuari: el registre del consum segueix sent manual,
+    // però ja no cal triar el destí cada vegada.
+    setZonaDestiId(nouOrigen?.zonaVinculadaId ?? '')
   }
+
+  const destiBloquejat = origenSeleccionat?.zonaVinculadaId != null
 
   const pesEquivalentBales =
     unitat === 'Unitats' && origenSeleccionat?.pesMitjaBalaKg && quantitat.trim()
@@ -147,14 +161,19 @@ export function ModalConsumMassiu({ onTancar, onRegistrat }: ModalConsumMassiuPr
             value={zonaDestiId}
             onChange={(e) => setZonaDestiId(e.target.value ? Number(e.target.value) : '')}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
-            disabled={mutacio.isPending}
+            disabled={mutacio.isPending || destiBloquejat}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base disabled:bg-gray-100"
           >
             <option value="">Selecciona un destí</option>
             {catalegs.destins.map((z) => (
               <option key={z.id} value={z.id}>{z.nom}</option>
             ))}
           </select>
+          {destiBloquejat && (
+            <p className="text-xs text-gray-400 mt-1">
+              Precompletat automàticament — aquest origen té una nau vinculada.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

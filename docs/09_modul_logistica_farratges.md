@@ -1,8 +1,9 @@
-# 09 — Mòdul de Logística, Farratges i Sitges
+# 09 — Mòdul de Magatzems (fins juliol 2026, "Logística, Farratges i Sitges")
 
-> **Versió:** 1.2.0  
+> **Versió:** 1.3.0  
 > **Última actualització:** Juliol de 2026  
 > **Basat en:** Disseny_Webapp_Gestió_Ramadera_Bovina_-_Mòdul_de_Logística_i_Farratges_V1.docx
+> **Nota de nomenclatura:** el mòdul es deia "Logística" fins juliol de 2026, quan es va renombrar a "Magatzems" (títol, pestanyes, aquest document). El canvi és NOMÉS visual — la ruta es manté `/logistica` i tots els endpoints `/api/logistica/*` no han canviat.
 
 ---
 
@@ -18,6 +19,8 @@
 | Gestió de Sitges i Magatzems de farratge (secció 4b) | ✅ Implementat (juliol 2026) | CRUD complet — abans no existia cap interfície, calia SQL manual |
 | Catàleg de Tipus de Pinso amb components (secció 4c) | ✅ Implementat (juliol 2026) | Codi + nom + composició amb percentatge |
 | Filtre del Destí per tipus de zona (secció 2.1) | ✅ Corregit (juliol 2026) | Abans mostrava totes les zones sense filtrar, incloent Coberts d'emmagatzematge |
+| Vinculació de sitja/magatzem a una nau/pastura (secció 4d) | ✅ Implementat (juliol 2026) | El Destí es precompleta i bloqueja automàticament en registrar un consum |
+| Entrada d'estoc repartida entre diversos silos (secció 4e) | ✅ Implementat (juliol 2026) | Repartiment manual (l'usuari indica la quantitat exacta per a cada destinatari) |
 
 ### 0.1. Decisions ampliades sobre el disseny original
 
@@ -52,7 +55,7 @@ Dissenyat per ser un formulari **net, directe i optimitzat** per a ús ràpid di
 | Camp | Tipus | Obligatori | Descripció |
 |------|-------|-----------|-----------|
 | **Origen** | Desplegable | ✅ | Magatzem o sitja d'on s'extreu l'aliment. **Només es mostren els magatzems en estat `Actiu`** |
-| **Destí** | Desplegable | ✅ | Nau d'animals o Zona de pastura on es diposita l'aliment. **Filtrat a `NAU_ANIMALS` i `PASTURA`** — un Cobert d'emmagatzematge no hi surt mai, ja que no consumeix aliment, només l'emmagatzema (corregit juliol 2026) |
+| **Destí** | Desplegable | ✅ | Nau d'animals o Zona de pastura on es diposita l'aliment. **Filtrat a `NAU_ANIMALS` i `PASTURA`** — un Cobert d'emmagatzematge no hi surt mai (corregit juliol 2026). **Es precompleta i bloqueja automàticament** si l'origen seleccionat té una nau vinculada (secció 4d, juliol 2026) |
 | **Quantitat** | Input numèric | ✅ | Xifra extreta del magatzem origen |
 | **Unitat de Mesura** | Desplegable | ✅ | `kg`, `Tones`, o `Unitats (Bales)` |
 | **Data** | Data | ✅ | Data del moviment (per defecte: avui) |
@@ -204,6 +207,57 @@ Admin i Treballador.
 
 ---
 
+## 4d. Vinculació de Sitja/Magatzem a una Nau o Pastura [NOU — juliol 2026]
+
+### 4d.1. Motivació
+
+En registrar un consum, l'usuari havia de triar manualment el Destí (nau/pastura) cada vegada, tot i que en la pràctica un silo concret sol alimentar sempre la mateixa nau. Es permet vincular-los opcionalment perquè el sistema ho recordi.
+
+### 4d.2. Comportament
+
+Cada sitja i cada magatzem de farratge pot tenir (opcionalment) una "Nau vinculada", triable entre les zones de tipus `NAU_ANIMALS` i `PASTURA`. Quan un origen amb vinculació se selecciona al formulari de Consums Massius, el camp **Destí es precompleta i bloqueja automàticament** amb la zona vinculada.
+
+### 4d.3. Abast — registre manual, no automàtic
+
+**El registre del consum en si segueix sent una acció manual** (l'usuari continua indicant quantitat i data cada vegada). La vinculació NOMÉS estalvia haver de triar el Destí i evita seleccionar-ne un d'incorrecte — no hi ha cap procés de descompte automàtic ni programat.
+
+### 4d.4. Validació
+
+La zona vinculada ha de ser `NAU_ANIMALS` o `PASTURA` (mai un Cobert d'emmagatzematge) — validat per un trigger de BD (`trg_sitges_zona_vinculada`/`trg_magatzem_zona_vinculada`, `database/09_migracio_vinculacio_zona.sql`), amb el desplegable del formulari ja filtrat per evitar l'error la majoria de vegades.
+
+### 4d.5. Rols amb accés
+
+Admin i Treballador.
+
+---
+
+## 4e. Entrada d'Estoc Repartida [NOU — juliol 2026]
+
+### 4e.1. Motivació
+
+Fins ara, l'única manera d'augmentar l'estoc d'una sitja o magatzem ja creats era editar-ne manualment el valor total (calculant "a mà" estoc actual + quantitat rebuda). No hi havia cap manera de repartir una única entrada (per exemple, un camió de 16 tones) entre diversos silos d'un sol cop.
+
+### 4e.2. Flux
+
+1. L'usuari selecciona el tipus (Sitges o Magatzems).
+2. Afegeix una fila per cada destinatari: selecciona el silo/magatzem i indica la quantitat exacta que hi va.
+3. Es mostra el total repartit en temps real.
+4. En confirmar, s'incrementa l'estoc de cada destinatari seleccionat en una única operació.
+
+### 4e.3. Repartiment manual (no automàtic ni equitatiu)
+
+**Decisió confirmada amb l'usuari:** el repartiment és sempre manual — l'usuari indica la quantitat exacta per a cada silo/magatzem. No hi ha cap opció de repartiment automàtic equitatiu.
+
+### 4e.4. Diferència amb un Consum
+
+Una entrada d'estoc **només incrementa** l'estoc — mai el descompta, i no implica cap animal ni cap nau (l'aliment encara no s'ha consumit, només ha arribat a la granja). No genera cap fila a `moviments_farratge` ni `consums_pinso_nau`; la traçabilitat de l'entrada queda registrada a `public.audit_log`.
+
+### 4e.5. Rols amb accés
+
+Admin i Treballador.
+
+---
+
 ## 5. Pantalla: Control d'Estoc de Magatzems
 
 Vista de consulta que mostra l'estat actual de tots els espais d'emmagatzematge:
@@ -254,3 +308,4 @@ Vista de consulta que mostra l'estat actual de tots els espais d'emmagatzematge:
 | `/api/logistica/magatzems/[id]` | PATCH | Admin, Treballador | Edició d'un magatzem |
 | `/api/logistica/tipus-pinso` | GET, POST | Admin, Treballador | Llistat i creació de tipus de pinso |
 | `/api/logistica/tipus-pinso/[id]` | PATCH | Admin, Treballador | Edició d'un tipus de pinso |
+| `/api/logistica/entrada-estoc` | POST | Admin, Treballador | Registra una entrada d'estoc repartida manualment entre sitges o magatzems |

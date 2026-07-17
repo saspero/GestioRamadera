@@ -41,10 +41,16 @@ export function ModalSitja({ sitjaExistent, onTancar, onSalvat }: ModalSitjaProp
     queryKey: queryKeys.logistica.tipusPinso,
     queryFn: () => fetch('/api/logistica/tipus-pinso').then((res) => res.json()).then((j) => j.tipusPinso),
   })
+  const zonesConsum = ubicacions.flatMap((u) =>
+    u.zones
+      .filter((z) => z.tipusZona === 'NAU_ANIMALS' || z.tipusZona === 'PASTURA')
+      .map((z) => ({ ...z, nomUbicacio: u.nom }))
+  )
 
   const [nom, setNom] = useState(sitjaExistent?.nom ?? '')
   const [ubicacioId, setUbicacioId] = useState<number | ''>(sitjaExistent?.ubicacioId ?? '')
   const [tipusPinsoId, setTipusPinsoId] = useState<number | ''>(sitjaExistent?.tipusPinsoId ?? '')
+  const [zonaVinculadaId, setZonaVinculadaId] = useState<number | ''>(sitjaExistent?.zonaVinculadaId ?? '')
   const [capacitatKg, setCapacitatKg] = useState(
     sitjaExistent?.capacitatKg != null ? String(sitjaExistent.capacitatKg) : ''
   )
@@ -65,6 +71,7 @@ export function ModalSitja({ sitjaExistent, onTancar, onSalvat }: ModalSitjaProp
         capacitatKg: capacitatKg.trim() ? Number(capacitatKg) : undefined,
         estocActualKg: Number(estocActualKg),
         estocMinimKg: estocMinimKg.trim() ? Number(estocMinimKg) : undefined,
+        zonaVinculadaId: zonaVinculadaId || undefined,
       }
       const url = sitjaExistent ? `/api/logistica/sitges/${sitjaExistent.id}` : '/api/logistica/sitges'
       const body = sitjaExistent ? bodyComu : { ...bodyComu, ubicacioId: Number(ubicacioId) }
@@ -190,6 +197,24 @@ export function ModalSitja({ sitjaExistent, onTancar, onSalvat }: ModalSitjaProp
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
             disabled={mutacio.isPending}
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Nau vinculada
+            <span className="font-normal text-gray-400"> (precompleta el Destí als consums)</span>
+          </label>
+          <select
+            value={zonaVinculadaId}
+            onChange={(e) => setZonaVinculadaId(e.target.value ? Number(e.target.value) : '')}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
+            disabled={mutacio.isPending}
+          >
+            <option value="">Sense vincular</option>
+            {zonesConsum.map((z) => (
+              <option key={z.id} value={z.id}>{z.nomUbicacio} — {z.nom}</option>
+            ))}
+          </select>
         </div>
 
         {mutacio.isError && (

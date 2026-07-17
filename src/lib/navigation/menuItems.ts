@@ -86,7 +86,7 @@ export const MENU_ITEMS: MenuItem[] = [
     rolsPermesos: ['Admin', 'Veterinari'],
   },
   {
-    label: 'Logística',
+    label: 'Magatzems',
     href: '/logistica',
     icon: Truck,
     rolsPermesos: ['Admin', 'Treballador'],

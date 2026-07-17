@@ -84,6 +84,14 @@ export async function POST(request: NextRequest) {
           { status: 422 }
         )
       }
+      const esZonaVinculadaInvalida =
+        dbError instanceof Error && dbError.message.includes('zona vinculada ha de ser una nau')
+      if (esZonaVinculadaInvalida) {
+        return NextResponse.json(
+          { error: 'La zona vinculada ha de ser una nau d\'animals o una pastura' },
+          { status: 422 }
+        )
+      }
       throw dbError
     }
 

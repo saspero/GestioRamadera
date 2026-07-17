@@ -40,7 +40,19 @@ export async function PATCH(
       )
     }
 
-    await actualitzarSitja(ctx, Number(id), parsed.data)
+    try {
+      await actualitzarSitja(ctx, Number(id), parsed.data)
+    } catch (dbError) {
+      const esZonaVinculadaInvalida =
+        dbError instanceof Error && dbError.message.includes('zona vinculada ha de ser una nau')
+      if (esZonaVinculadaInvalida) {
+        return NextResponse.json(
+          { error: 'La zona vinculada ha de ser una nau d\'animals o una pastura' },
+          { status: 422 }
+        )
+      }
+      throw dbError
+    }
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('[PATCH /api/logistica/sitges/[id]]', error)

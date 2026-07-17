@@ -41,6 +41,7 @@ export const crearSitjaSchema = z.object({
   capacitatKg: z.number().positive().optional(),
   estocActualKg: z.number().nonnegative({ message: 'L\'estoc no pot ser negatiu' }),
   estocMinimKg: z.number().nonnegative().optional(),
+  zonaVinculadaId: z.number().int().positive().optional(),
 })
 
 export const actualitzarSitjaSchema = crearSitjaSchema.omit({ ubicacioId: true })
@@ -52,9 +53,27 @@ export const crearMagatzemSchema = z.object({
   estocActualTones: z.number().nonnegative({ message: 'L\'estoc no pot ser negatiu' }),
   estocMinimTones: z.number().nonnegative().optional(),
   pesMitjaBalaKg: z.number().positive().optional(),
+  zonaVinculadaId: z.number().int().positive().optional(),
 })
 
 export const actualitzarMagatzemSchema = crearMagatzemSchema.omit({ zonaId: true })
+
+/**
+ * Repartiment manual d'una entrada d'estoc entre diversos silos o
+ * magatzems del mateix tipus (Ex: un camió de 16 tones repartit
+ * entre 3 sitges).
+ */
+export const registrarEntradaEstocSchema = z.object({
+  tipus: z.enum(['sitja', 'magatzem']),
+  repartiment: z
+    .array(
+      z.object({
+        id: z.number().int().positive(),
+        quantitat: z.number().positive({ message: 'La quantitat ha de ser superior a 0' }),
+      })
+    )
+    .min(1, 'Cal repartir la quantitat en almenys un magatzem'),
+})
 
 export type RegistrarConsumInput = z.infer<typeof registrarConsumSchema>
 export type CanviarEstatMagatzemInput = z.infer<typeof canviarEstatMagatzemSchema>
@@ -62,3 +81,4 @@ export type ComponentPinsoInput = z.infer<typeof componentPinsoSchema>
 export type CrearTipusPinsoInput = z.infer<typeof crearTipusPinsoSchema>
 export type CrearSitjaInput = z.infer<typeof crearSitjaSchema>
 export type CrearMagatzemInput = z.infer<typeof crearMagatzemSchema>
+export type RegistrarEntradaEstocInput = z.infer<typeof registrarEntradaEstocSchema>

@@ -71,7 +71,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const resultat = await crearSitja(ctx, parsed.data)
+    let resultat
+    try {
+      resultat = await crearSitja(ctx, parsed.data)
+    } catch (dbError) {
+      const esZonaVinculadaInvalida =
+        dbError instanceof Error && dbError.message.includes('zona vinculada ha de ser una nau')
+      if (esZonaVinculadaInvalida) {
+        return NextResponse.json(
+          { error: 'La zona vinculada ha de ser una nau d\'animals o una pastura' },
+          { status: 422 }
+        )
+      }
+      throw dbError
+    }
 
     await auditLog({
       tenantId,
