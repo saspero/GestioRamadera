@@ -31,6 +31,16 @@ export const afegirEntradaMedicamentSchema = z.object({
 })
 
 /**
+ * Edició d'una entrada d'estoc ja existent (juliol 2026).
+ * @remarks `medicamentCatalegId` NO és editable — a quin medicament
+ * del catàleg correspon una entrada es fixa en crear-la, igual que
+ * `ubicacioId` a una sitja o `zonaId` a un magatzem.
+ */
+export const actualitzarEntradaMedicamentSchema = afegirEntradaMedicamentSchema.omit({
+  medicamentCatalegId: true,
+})
+
+/**
  * Validació d'una fila del CSV de medicaments.
  * @remarks Format SENSE CANVIS (decisió confirmada): cada fila
  * segueix portant totes les dades encara que el medicament ja
@@ -53,10 +63,15 @@ export const bulkImportMedicamentsSchema = z.object({
   medicaments: z.array(filaCsvMedicamentSchema).min(1, 'Cal almenys un medicament vàlid'),
 })
 
+/** Unitats de dosi disponibles (juliol 2026, abans era text lliure). */
+const unitatDosiEnum = z.enum(['ml', 'g', 'mg', 'unitats', 'cc'])
+
 /**
  * Aplicació d'un tractament, individual o per lot (mateix schema).
  * @remarks `animalIds` sempre és un array — amb un únic element per
  * al mode individual (docs/06_modul_sanitari.md, secció 4.1).
+ * @remarks `unitatDosi` ara és un desplegable tancat (juliol 2026),
+ * abans text lliure.
  */
 export const aplicarTractamentSchema = z.object({
   animalIds: z.array(z.number().int().positive()).min(1, 'Cal seleccionar almenys un animal'),
@@ -64,12 +79,42 @@ export const aplicarTractamentSchema = z.object({
   dataInici: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format AAAA-MM-DD'),
   dataFiPrevista: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
   dosiAplicada: z.number().positive().optional(),
-  unitatDosi: z.string().trim().max(20).optional().or(z.literal('')),
+  unitatDosi: unitatDosiEnum.optional(),
   notes: z.string().trim().max(1000).optional().or(z.literal('')),
 })
 
+/**
+ * Edició d'un tractament ja aplicat (juliol 2026).
+ * @remarks Només dosi, data de fi prevista i notes — no l'animal, el
+ * medicament ni la data d'inici (decisió confirmada amb l'usuari).
+ */
+export const actualitzarTractamentSchema = z.object({
+  dosiAplicada: z.number().positive().optional(),
+  dataFiPrevista: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
+  notes: z.string().trim().max(1000).optional().or(z.literal('')),
+})
+
+/**
+ * Eliminació d'un tractament, amb motiu obligatori (juliol 2026).
+ * @remarks Si `motiu === 'Altres'`, `motiuAltres` esdevé obligatori
+ * (validat amb `.refine`, ja que Zod no ho pot expressar amb un
+ * `.optional()` condicional directe).
+ */
+export const eliminarTractamentSchema = z
+  .object({
+    motiu: z.enum(['Error d\'entrada', 'Duplicat', 'Dosi incorrecta', 'Medicament incorrecte', 'Altres']),
+    motiuAltres: z.string().trim().max(500).optional().or(z.literal('')),
+  })
+  .refine((data) => data.motiu !== 'Altres' || (data.motiuAltres && data.motiuAltres.trim().length > 0), {
+    message: 'Cal especificar el motiu quan es tria "Altres"',
+    path: ['motiuAltres'],
+  })
+
 export type CrearMedicamentCatalegInput = z.infer<typeof crearMedicamentCatalegSchema>
 export type AfegirEntradaMedicamentInput = z.infer<typeof afegirEntradaMedicamentSchema>
+export type ActualitzarEntradaMedicamentInput = z.infer<typeof actualitzarEntradaMedicamentSchema>
 export type FilaCsvMedicamentInput = z.infer<typeof filaCsvMedicamentSchema>
 export type BulkImportMedicamentsInput = z.infer<typeof bulkImportMedicamentsSchema>
 export type AplicarTractamentInput = z.infer<typeof aplicarTractamentSchema>
+export type ActualitzarTractamentInput = z.infer<typeof actualitzarTractamentSchema>
+export type EliminarTractamentInput = z.infer<typeof eliminarTractamentSchema>

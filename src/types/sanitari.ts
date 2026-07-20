@@ -31,6 +31,20 @@ export type MedicamentCataleg = {
   diesSupressio: number
 }
 
+/** Unitats disponibles per a la dosi d'un tractament (juliol 2026, desplegable). */
+export type UnitatDosi = 'ml' | 'g' | 'mg' | 'unitats' | 'cc'
+
+/**
+ * Motiu d'eliminació d'un tractament (juliol 2026). Si el motiu és
+ * "Altres", cal informar `motiuAltres` amb text lliure.
+ */
+export type MotiuEliminacioTractament =
+  | 'Error d\'entrada'
+  | 'Duplicat'
+  | 'Dosi incorrecta'
+  | 'Medicament incorrecte'
+  | 'Altres'
+
 /**
  * Tractament aplicat a un animal, amb el nom del medicament per a
  * la vista de llistat (evita un JOIN addicional al client).
@@ -80,6 +94,27 @@ export type AplicarTractamentInput = {
   dataInici: string
   dataFiPrevista?: string
   dosiAplicada?: number
-  unitatDosi?: string
+  unitatDosi?: UnitatDosi
   notes?: string
+}
+
+/**
+ * Payload per editar un tractament ja aplicat (juliol 2026).
+ * @remarks Només dosi aplicada, data de fi prevista i notes són
+ * editables — no l'animal, el medicament ni la data d'inici
+ * (decisió confirmada amb l'usuari).
+ * @remarks Editar la dosi NO ajusta retroactivament l'estoc que ja
+ * es va descomptar en aplicar el tractament originalment — mateix
+ * criteri que l'estoc negatiu (gestió manual si cal corregir-ho).
+ */
+export type ActualitzarTractamentInput = {
+  dosiAplicada?: number
+  dataFiPrevista?: string
+  notes?: string
+}
+
+/** Payload per eliminar un tractament, amb el motiu obligatori. */
+export type EliminarTractamentInput = {
+  motiu: MotiuEliminacioTractament
+  motiuAltres?: string
 }

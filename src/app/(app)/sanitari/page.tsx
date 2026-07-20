@@ -10,6 +10,8 @@ import { ModalNouMedicament } from '@/components/sanitari/ModalNouMedicament'
 import { ModalAfegirEntradaMedicament } from '@/components/sanitari/ModalAfegirEntradaMedicament'
 import { ModalImportarMedicaments } from '@/components/sanitari/ModalImportarMedicaments'
 import { ModalAplicarTractament } from '@/components/sanitari/ModalAplicarTractament'
+import { ModalEditarTractament } from '@/components/sanitari/ModalEditarTractament'
+import { ModalEliminarTractament } from '@/components/sanitari/ModalEliminarTractament'
 import { useSessio } from '@/lib/session/SessioContext'
 import { queryKeys } from '@/lib/query/queryKeys'
 import type { Medicament, MedicamentCataleg, TractamentAmbMedicament } from '@/types/sanitari'
@@ -18,8 +20,8 @@ type Vista = 'inventari' | 'cataleg' | 'tractaments'
 
 /**
  * Pàgina del mòdul Sanitari: estoc de medicaments (amb entrades
- * individuals i importació CSV), catàleg de medicaments (dades
- * mestres), i tractaments aplicats.
+ * individuals, edició i importació CSV), catàleg de medicaments
+ * (dades mestres), i tractaments aplicats (amb edició i eliminació).
  *
  * @returns Pàgina amb selector de vista i les taules corresponents
  *
@@ -29,6 +31,13 @@ type Vista = 'inventari' | 'cataleg' | 'tractaments'
  * només les dades mestres; "Afegir entrada" (pestanya Magatzem
  * sanitari) hi referencia un medicament ja existent al catàleg i
  * en registra una compra/lot concrets.
+ * @remarks Edició d'entrades i edició/eliminació de tractaments
+ * (juliol 2026): ModalAfegirEntradaMedicament ara suporta mode
+ * edició via `entradaExistent`; ModalEditarTractament/
+ * ModalEliminarTractament són nous. L'eliminació d'un tractament és
+ * un DELETE real (amb log separat i motiu obligatori) — si l'animal
+ * encara estava en supressió per aquell tractament, el bloqueig
+ * s'aixeca a l'instant (avisat dins del propi modal d'eliminació).
  * @remarks Control d'accés: lectura oberta als 3 rols. Les accions
  * d'escriptura només per a Admin i Veterinari.
  */
@@ -39,8 +48,11 @@ export default function SanitariPage() {
   const [vista, setVista] = useState<Vista>('inventari')
   const [modalNouMedicamentObert, setModalNouMedicamentObert] = useState(false)
   const [modalAfegirEntradaObert, setModalAfegirEntradaObert] = useState(false)
+  const [medicamentEditar, setMedicamentEditar] = useState<Medicament | null>(null)
   const [modalImportarObert, setModalImportarObert] = useState(false)
   const [modalTractamentObert, setModalTractamentObert] = useState(false)
+  const [tractamentEditar, setTractamentEditar] = useState<TractamentAmbMedicament | null>(null)
+  const [tractamentEliminar, setTractamentEliminar] = useState<TractamentAmbMedicament | null>(null)
 
   const { data: medicaments = [], isLoading: carregantMedicaments } = useQuery<Medicament[]>({
     queryKey: queryKeys.sanitari.medicaments,
@@ -133,13 +145,24 @@ export default function SanitariPage() {
       </div>
 
       {vista === 'inventari' && (
-        <TaulaMedicaments medicaments={medicaments} carregant={carregantMedicaments} />
+        <TaulaMedicaments
+          medicaments={medicaments}
+          carregant={carregantMedicaments}
+          potEditar={potEditar}
+          onEditar={(m) => setMedicamentEditar(m)}
+        />
       )}
       {vista === 'cataleg' && (
         <TaulaMedicamentsCataleg medicamentsCataleg={medicamentsCataleg} carregant={carregantCataleg} />
       )}
       {vista === 'tractaments' && (
-        <TaulaTractaments tractaments={tractaments} carregant={carregantTractaments} />
+        <TaulaTractaments
+          tractaments={tractaments}
+          carregant={carregantTractaments}
+          potEditar={potEditar}
+          onEditar={(t) => setTractamentEditar(t)}
+          onEliminar={(t) => setTractamentEliminar(t)}
+        />
       )}
 
       {modalNouMedicamentObert && (
@@ -156,6 +179,14 @@ export default function SanitariPage() {
         />
       )}
 
+      {medicamentEditar && (
+        <ModalAfegirEntradaMedicament
+          entradaExistent={medicamentEditar}
+          onTancar={() => setMedicamentEditar(null)}
+          onDesat={() => setMedicamentEditar(null)}
+        />
+      )}
+
       {modalImportarObert && (
         <ModalImportarMedicaments
           onTancar={() => setModalImportarObert(false)}
@@ -167,6 +198,22 @@ export default function SanitariPage() {
         <ModalAplicarTractament
           onTancar={() => setModalTractamentObert(false)}
           onAplicat={() => setModalTractamentObert(false)}
+        />
+      )}
+
+      {tractamentEditar && (
+        <ModalEditarTractament
+          tractament={tractamentEditar}
+          onTancar={() => setTractamentEditar(null)}
+          onDesat={() => setTractamentEditar(null)}
+        />
+      )}
+
+      {tractamentEliminar && (
+        <ModalEliminarTractament
+          tractament={tractamentEliminar}
+          onTancar={() => setTractamentEliminar(null)}
+          onEliminat={() => setTractamentEliminar(null)}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 'use client'
 
+import { Pencil } from 'lucide-react'
 import { formatNumber } from '@/lib/format'
 import { PaginacioControls } from '@/components/ui/PaginacioControls'
 import { usePaginacio } from '@/hooks/usePaginacio'
@@ -8,6 +9,9 @@ import type { Medicament } from '@/types/sanitari'
 type TaulaMedicamentsProps = {
   medicaments: Medicament[]
   carregant: boolean
+  /** Si false (rol Treballador), s'amaga el botó d'editar. */
+  potEditar: boolean
+  onEditar: (medicament: Medicament) => void
 }
 
 /**
@@ -15,15 +19,19 @@ type TaulaMedicamentsProps = {
  *
  * @param props.medicaments - Medicaments a mostrar
  * @param props.carregant - Indica si s'està carregant
+ * @param props.potEditar - Si true, mostra el botó d'editar cada entrada
+ * @param props.onEditar - Callback per obrir el modal d'edició
  * @returns Taula responsive amb l'inventari, paginat
  *
+ * @remarks Edició afegida juliol 2026 — abans les entrades d'estoc
+ * no es podien corregir un cop desades.
  * @remarks PAGINACIÓ: usePaginacio(), 25 files per pàgina, només al
  * client.
  * @remarks Els medicaments amb estoc a 0 es mostren igualment
  * (segueixen visibles a l'historial, docs/06_modul_sanitari.md,
  * secció 2.2) però amb l'estoc destacat en vermell.
  */
-export function TaulaMedicaments({ medicaments, carregant }: TaulaMedicamentsProps) {
+export function TaulaMedicaments({ medicaments, carregant, potEditar, onEditar }: TaulaMedicamentsProps) {
   const { dadesPagina, paginaActual, totalPagines, totalFiles, paginaAnterior, paginaSeguent } =
     usePaginacio(medicaments, 25)
 
@@ -38,18 +46,19 @@ export function TaulaMedicaments({ medicaments, carregant }: TaulaMedicamentsPro
             <th className="px-4 py-2 font-medium text-right">Estoc</th>
             <th className="px-4 py-2 font-medium text-right">Preu</th>
             <th className="px-4 py-2 font-medium text-right">Dies supressió</th>
+            {potEditar && <th className="px-4 py-2 font-medium"></th>}
           </tr>
         </thead>
         <tbody>
           {carregant ? (
             <tr>
-              <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
+              <td colSpan={potEditar ? 7 : 6} className="px-4 py-6 text-center text-gray-500">
                 Carregant...
               </td>
             </tr>
           ) : dadesPagina.length === 0 ? (
             <tr>
-              <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
+              <td colSpan={potEditar ? 7 : 6} className="px-4 py-6 text-center text-gray-500">
                 Cap medicament a l&apos;inventari.
               </td>
             </tr>
@@ -64,6 +73,17 @@ export function TaulaMedicaments({ medicaments, carregant }: TaulaMedicamentsPro
                 </td>
                 <td className="px-4 py-2.5 text-right text-gray-700">{formatNumber(m.preuCompra)} €</td>
                 <td className="px-4 py-2.5 text-right text-gray-700">{m.diesSupressio}</td>
+                {potEditar && (
+                  <td className="px-4 py-2.5">
+                    <button
+                      onClick={() => onEditar(m)}
+                      className="p-1.5 rounded-lg hover:bg-gray-100"
+                      aria-label={`Editar ${m.nomMedicament}`}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))
           )}

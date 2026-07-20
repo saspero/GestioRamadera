@@ -105,6 +105,33 @@ export async function crearMedicamentCataleg(
 }
 
 /**
+ * Actualitza una entrada d'estoc existent (lot, quantitat, unitat, preu).
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param id - Id de l'entrada d'estoc
+ * @param params - Lot, quantitat, unitat i preu nous
+ * @returns Promise que es resol un cop desat el canvi
+ *
+ * @remarks `medicamentCatalegId` NO és editable — es fixa en crear
+ * l'entrada, igual que `ubicacioId` a una sitja.
+ * @remarks Control d'accés: Admin i Veterinari.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function actualitzarEntradaMedicament(
+  ctx: TenantContext,
+  id: number,
+  params: { lot: string; quantitatEstoc: number; unitatEstoc: string; preuCompra: number }
+): Promise<void> {
+  await queryTenant(
+    ctx,
+    `UPDATE medicaments
+     SET lot = $1, quantitat_estoc = $2, unitat_estoc = $3, preu_compra = $4
+     WHERE id = $5`,
+    [params.lot, params.quantitatEstoc, params.unitatEstoc, params.preuCompra, id]
+  )
+}
+
+/**
  * Afegeix una entrada d'estoc (compra/lot) d'un medicament ja
  * existent al catàleg.
  *
@@ -406,4 +433,101 @@ export async function getAnimalIdsDelLot(
     [lotId]
   )
   return rows.map((r) => r.animal_id)
+}
+
+/**
+ * Actualitza un tractament ja aplicat (dosi, data de fi prevista i notes).
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param id - Id del tractament
+ * @param params - Dosi aplicada, data de fi prevista i notes (tots opcionals)
+ * @returns Promise que es resol un cop desat el canvi
+ *
+ * @remarks NOMÉS aquests tres camps són editables (decisió confirmada
+ * amb l'usuari) — l'animal, el medicament i la data d'inici no es
+ * poden canviar un cop aplicat el tractament.
+ * @remarks NO ajusta retroactivament l'estoc del medicament — el
+ * descompte ja es va fer en aplicar el tractament originalment.
+ * Si cal corregir l'estoc arran d'una edició de dosi, es fa
+ * manualment editant l'entrada d'estoc (mateix criteri que l'estoc
+ * negatiu, gestió manual).
+ * @remarks NO recalcula data_alliberament — el trigger de BD
+ * (fn_calcula_data_alliberament) només es dispara en funció de
+ * data_inici, que no és editable des d'aquí.
+ * @remarks Control d'accés: Admin i Veterinari.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function actualitzarTractament(
+  ctx: TenantContext,
+  id: number,
+  params: { dosiAplicada?: number; dataFiPrevista?: string; notes?: string }
+): Promise<void> {
+  await queryTenant(
+    ctx,
+    `UPDATE tractaments
+     SET dosi_aplicada = $1, data_fi_prevista = $2, notes = $3
+     WHERE id = $4`,
+    [params.dosiAplicada ?? null, params.dataFiPrevista ?? null, params.notes ?? null, id]
+  )
+}
+
+/**
+ * Elimina un tractament (DELETE real, decisió confirmada amb
+ * l'usuari), després de desar-ne una còpia (snapshot) al log
+ * d'eliminacions amb el motiu indicat.
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param id - Id del tractament a eliminar
+ * @param params - Motiu (predefinit) i motiuAltres (text lliure, si motiu === 'Altres')
+ * @returns true si s'ha eliminat i registrat correctament, false si
+ * el tractament no existia
+ *
+ * @remarks IMPORTANT: si l'animal encara estava en període de
+ * supressió (bloqueig comercial) per aquest tractament, eliminar-lo
+ * aixeca el bloqueig a l'instant — decisió confirmada explícitament
+ * amb l'usuari (eliminació real, no "tova"). El log preserva quines
+ * dades tenia el tractament eliminat, incloent-hi data_alliberament,
+ * per a consulta posterior si calgués justificar-ho.
+ * @remarks Tot en una única transacció (DELETE...RETURNING com a CTE
+ * + INSERT al log a partir d'aquest resultat) — si l'INSERT del log
+ * fallés per qualsevol motiu, el DELETE tampoc es faria efectiu.
+ * @remarks Control d'accés: Admin i Veterinari.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function eliminarTractament(
+  ctx: TenantContext,
+  id: number,
+  params: { motiu: string; motiuAltres?: string }
+): Promise<boolean> {
+  const rows = await queryTenant<{ id: number }>(
+    ctx,
+    `WITH tractament_eliminat AS (
+       DELETE FROM tractaments t
+       WHERE t.id = $1
+       RETURNING t.id, t.animal_id, t.medicament_id, t.data_inici,
+                 t.data_alliberament, t.dosi_aplicada, t.unitat_dosi
+     ),
+     dades AS (
+       SELECT
+         te.id, te.animal_id, a.dib AS animal_dib,
+         mc.nom_medicament,
+         te.data_inici, te.data_alliberament, te.dosi_aplicada, te.unitat_dosi
+       FROM tractament_eliminat te
+       JOIN animals a              ON a.id = te.animal_id
+       JOIN medicaments m          ON m.id = te.medicament_id
+       JOIN medicaments_cataleg mc ON mc.id = m.medicament_cataleg_id
+     )
+     INSERT INTO tractaments_eliminats_log (
+       tractament_id_original, animal_id, animal_dib, nom_medicament,
+       data_inici, data_alliberament, dosi_aplicada, unitat_dosi,
+       motiu, motiu_altres, eliminat_per
+     )
+     SELECT id, animal_id, animal_dib, nom_medicament,
+            data_inici, data_alliberament, dosi_aplicada, unitat_dosi,
+            $2, $3, $4
+     FROM dades
+     RETURNING id`,
+    [id, params.motiu, params.motiuAltres ?? null, ctx.userId]
+  )
+  return rows.length > 0
 }
