@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Plus, Upload, Syringe } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { TaulaMedicaments } from '@/components/sanitari/TaulaMedicaments'
 import { TaulaMedicamentsCataleg } from '@/components/sanitari/TaulaMedicamentsCataleg'
 import { TaulaTractaments } from '@/components/sanitari/TaulaTractaments'
@@ -14,39 +14,40 @@ import { ModalEditarTractament } from '@/components/sanitari/ModalEditarTractame
 import { ModalEliminarTractament } from '@/components/sanitari/ModalEliminarTractament'
 import { useSessio } from '@/lib/session/SessioContext'
 import { queryKeys } from '@/lib/query/queryKeys'
+import { toastExit, toastError } from '@/lib/toast/toastHelpers'
 import type { Medicament, MedicamentCataleg, TractamentAmbMedicament } from '@/types/sanitari'
 
 type Vista = 'inventari' | 'cataleg' | 'tractaments'
 
 /**
  * Pàgina del mòdul Sanitari: estoc de medicaments (amb entrades
- * individuals, edició i importació CSV), catàleg de medicaments
- * (dades mestres), i tractaments aplicats (amb edició i eliminació).
+ * individuals, edició, eliminació i importació CSV), catàleg de
+ * medicaments (amb edició i eliminació), i tractaments aplicats
+ * (amb edició i eliminació).
  *
  * @returns Pàgina amb selector de vista i les taules corresponents
  *
- * @remarks Catàleg separat de l'estoc (juliol 2026, migració
- * 10_migracio_cataleg_medicaments.sql, mateix patró que "Tipus de
- * Pinso" a Magatzems): "Nou medicament" (pestanya Catàleg) crea
- * només les dades mestres; "Afegir entrada" (pestanya Magatzem
- * sanitari) hi referencia un medicament ja existent al catàleg i
- * en registra una compra/lot concrets.
- * @remarks Edició d'entrades i edició/eliminació de tractaments
- * (juliol 2026): ModalAfegirEntradaMedicament ara suporta mode
- * edició via `entradaExistent`; ModalEditarTractament/
- * ModalEliminarTractament són nous. L'eliminació d'un tractament és
- * un DELETE real (amb log separat i motiu obligatori) — si l'animal
- * encara estava en supressió per aquell tractament, el bloqueig
- * s'aixeca a l'instant (avisat dins del propi modal d'eliminació).
+ * @remarks Model d'estoc (juliol 2026, migració
+ * 13_migracio_estoc_unitats_medicaments.sql): l'estoc total es
+ * calcula com nombre d'unitats × quantitat per unitat, ja no
+ * s'introdueix a mà.
+ * @remarks Eliminació d'entrades i de medicaments del catàleg
+ * (juliol 2026): totes dues delegen en un `window.confirm()` simple
+ * abans de cridar l'endpoint (mateix patró que l'eliminació de
+ * races a Configuració) — si hi ha dependències (tractaments que
+ * referencien una entrada, o entrades que referencien un catàleg),
+ * l'endpoint ho rebutja amb un 409 i un missatge clar.
  * @remarks Control d'accés: lectura oberta als 3 rols. Les accions
  * d'escriptura només per a Admin i Veterinari.
  */
 export default function SanitariPage() {
   const { rol } = useSessio()
   const potEditar = rol === 'Admin' || rol === 'Veterinari'
+  const queryClient = useQueryClient()
 
   const [vista, setVista] = useState<Vista>('inventari')
   const [modalNouMedicamentObert, setModalNouMedicamentObert] = useState(false)
+  const [medicamentCatalegEditar, setMedicamentCatalegEditar] = useState<MedicamentCataleg | null>(null)
   const [modalAfegirEntradaObert, setModalAfegirEntradaObert] = useState(false)
   const [medicamentEditar, setMedicamentEditar] = useState<Medicament | null>(null)
   const [modalImportarObert, setModalImportarObert] = useState(false)
@@ -72,6 +73,48 @@ export default function SanitariPage() {
     queryFn: () => fetch('/api/sanitari/tractaments').then((res) => res.json()).then((j) => j.tractaments),
     enabled: vista === 'tractaments',
   })
+
+  const mutacioEliminarEntrada = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/sanitari/medicaments/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json()
+        throw new Error(json.error ?? 'Error en eliminar l\'entrada')
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sanitari.medicaments })
+      toastExit('Entrada eliminada')
+    },
+    onError: (err) => toastError(err, 'Error en eliminar l\'entrada'),
+  })
+
+  const mutacioEliminarCataleg = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/sanitari/medicaments-cataleg/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json()
+        throw new Error(json.error ?? 'Error en eliminar el medicament')
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sanitari.medicamentsCataleg })
+      toastExit('Medicament eliminat del catàleg')
+    },
+    onError: (err) => toastError(err, 'Error en eliminar el medicament'),
+  })
+
+  function handleEliminarEntrada(m: Medicament) {
+    if (confirm(`Segur que vols eliminar l'entrada de lot "${m.lot}" (${m.nomMedicament})?`)) {
+      mutacioEliminarEntrada.mutate(m.id)
+    }
+  }
+
+  function handleEliminarCataleg(m: MedicamentCataleg) {
+    if (confirm(`Segur que vols eliminar "${m.nomMedicament}" del catàleg?`)) {
+      mutacioEliminarCataleg.mutate(m.id)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -150,10 +193,17 @@ export default function SanitariPage() {
           carregant={carregantMedicaments}
           potEditar={potEditar}
           onEditar={(m) => setMedicamentEditar(m)}
+          onEliminar={handleEliminarEntrada}
         />
       )}
       {vista === 'cataleg' && (
-        <TaulaMedicamentsCataleg medicamentsCataleg={medicamentsCataleg} carregant={carregantCataleg} />
+        <TaulaMedicamentsCataleg
+          medicamentsCataleg={medicamentsCataleg}
+          carregant={carregantCataleg}
+          potEditar={potEditar}
+          onEditar={(m) => setMedicamentCatalegEditar(m)}
+          onEliminar={handleEliminarCataleg}
+        />
       )}
       {vista === 'tractaments' && (
         <TaulaTractaments
@@ -169,6 +219,14 @@ export default function SanitariPage() {
         <ModalNouMedicament
           onTancar={() => setModalNouMedicamentObert(false)}
           onDesat={() => setModalNouMedicamentObert(false)}
+        />
+      )}
+
+      {medicamentCatalegEditar && (
+        <ModalNouMedicament
+          medicamentExistent={medicamentCatalegEditar}
+          onTancar={() => setMedicamentCatalegEditar(null)}
+          onDesat={() => setMedicamentCatalegEditar(null)}
         />
       )}
 

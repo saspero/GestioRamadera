@@ -2,11 +2,8 @@ import { z } from 'zod'
 
 /**
  * Alta d'un medicament nou al catàleg (dades mestres, no estoc).
- * @remarks Substitueix l'antic crearMedicamentSchema (que barrejava
- * dades mestres i d'estoc en un únic formulari) — des de la migració
- * 10_migracio_cataleg_medicaments.sql, "Nou medicament" només crea
- * l'entrada del catàleg; l'estoc es dona d'alta per separat amb
- * afegirEntradaMedicamentSchema.
+ * @remarks Reutilitzat també per a l'edició (actualitzarMedicamentCatalegSchema
+ * és un àlies d'aquest mateix schema — els camps editables coincideixen).
  */
 export const crearMedicamentCatalegSchema = z.object({
   nomMedicament: z.string().trim().min(1, 'El nom és obligatori').max(255),
@@ -15,26 +12,32 @@ export const crearMedicamentCatalegSchema = z.object({
   diesSupressio: z.number().int().nonnegative({ message: 'Els dies de supressió no poden ser negatius' }),
 })
 
+/** Edició d'un medicament del catàleg — mateixos camps que la creació (juliol 2026). */
+export const actualitzarMedicamentCatalegSchema = crearMedicamentCatalegSchema
+
 /**
  * Alta d'una entrada d'estoc (compra/lot) d'un medicament ja existent
  * al catàleg.
- * @remarks `quantitatEstoc` correspon al "nombre d'ampolles o sobres"
- * (o la unitat que correspongui) — el camp és el mateix, només canvia
- * l'etiqueta mostrada a la UI segons el context.
+ * @remarks Model d'estoc (juliol 2026, migració
+ * 13_migracio_estoc_unitats_medicaments.sql): en comptes d'un total
+ * introduït a mà (`quantitatEstoc`), ara es demana el nombre
+ * d'ampolles/sobres (`nombreUnitats`) i quant conté cadascuna
+ * (`quantitatPerUnitat`) — l'estoc total es calcula automàticament.
  */
 export const afegirEntradaMedicamentSchema = z.object({
   medicamentCatalegId: z.number().int().positive({ message: 'Cal seleccionar un medicament del catàleg' }),
   lot: z.string().trim().min(1, 'El lot és obligatori').max(100),
-  quantitatEstoc: z.number().nonnegative({ message: 'L\'estoc no pot ser negatiu' }),
-  unitatEstoc: z.string().trim().min(1, 'La unitat és obligatòria').max(20),
+  nombreUnitats: z.number().nonnegative({ message: 'El nombre d\'unitats no pot ser negatiu' }),
+  unitatPaquet: z.string().trim().min(1, 'La unitat de paquet és obligatòria').max(20),
+  quantitatPerUnitat: z.number().positive({ message: 'La quantitat per unitat ha de ser superior a 0' }),
+  unitatContingut: z.string().trim().min(1, 'La unitat de contingut és obligatòria').max(20),
   preuCompra: z.number().nonnegative({ message: 'El preu no pot ser negatiu' }),
 })
 
 /**
  * Edició d'una entrada d'estoc ja existent (juliol 2026).
- * @remarks `medicamentCatalegId` NO és editable — a quin medicament
- * del catàleg correspon una entrada es fixa en crear-la, igual que
- * `ubicacioId` a una sitja o `zonaId` a un magatzem.
+ * @remarks `medicamentCatalegId` NO és editable — es fixa en crear
+ * l'entrada.
  */
 export const actualitzarEntradaMedicamentSchema = afegirEntradaMedicamentSchema.omit({
   medicamentCatalegId: true,
@@ -42,18 +45,18 @@ export const actualitzarEntradaMedicamentSchema = afegirEntradaMedicamentSchema.
 
 /**
  * Validació d'una fila del CSV de medicaments.
- * @remarks Format SENSE CANVIS (decisió confirmada): cada fila
- * segueix portant totes les dades encara que el medicament ja
- * existeixi al catàleg — la lògica de crear/reutilitzar el catàleg
- * es resol a importarMedicamentsMassiu()
- * (src/lib/db/queries/sanitari.ts), no aquí.
+ * @remarks Format ACTUALITZAT (juliol 2026) amb el nou model d'estoc
+ * — `quantitat`+`unitat` passen a ser 4 columnes:
+ * `nombre_unitats`, `unitat_paquet`, `quantitat_per_unitat`, `unitat_contingut`.
  */
 export const filaCsvMedicamentSchema = z.object({
   nom_medicament: z.string().trim().min(1, 'Nom obligatori').max(255),
   principi_actiu: z.string().trim().min(1, 'Principi actiu obligatori').max(255),
   lot: z.string().trim().min(1, 'Lot obligatori').max(100),
-  quantitat: z.string().trim().regex(/^\d+([.,]\d+)?$/, 'Quantitat no vàlida'),
-  unitat: z.string().trim().min(1, 'Unitat obligatòria').max(20),
+  nombre_unitats: z.string().trim().regex(/^\d+([.,]\d+)?$/, 'Nombre d\'unitats no vàlid'),
+  unitat_paquet: z.string().trim().min(1, 'Unitat de paquet obligatòria').max(20),
+  quantitat_per_unitat: z.string().trim().regex(/^\d+([.,]\d+)?$/, 'Quantitat per unitat no vàlida'),
+  unitat_contingut: z.string().trim().min(1, 'Unitat de contingut obligatòria').max(20),
   posologia: z.string().trim().max(1000).optional().or(z.literal('')),
   preu: z.string().trim().regex(/^\d+([.,]\d+)?$/, 'Preu no vàlid'),
   dies_supressio: z.string().trim().regex(/^\d+$/, 'Dies de supressió no vàlids'),
@@ -111,6 +114,7 @@ export const eliminarTractamentSchema = z
   })
 
 export type CrearMedicamentCatalegInput = z.infer<typeof crearMedicamentCatalegSchema>
+export type ActualitzarMedicamentCatalegInput = z.infer<typeof actualitzarMedicamentCatalegSchema>
 export type AfegirEntradaMedicamentInput = z.infer<typeof afegirEntradaMedicamentSchema>
 export type ActualitzarEntradaMedicamentInput = z.infer<typeof actualitzarEntradaMedicamentSchema>
 export type FilaCsvMedicamentInput = z.infer<typeof filaCsvMedicamentSchema>

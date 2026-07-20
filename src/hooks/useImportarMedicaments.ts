@@ -17,7 +17,9 @@ export type FilaPrevisualitzacioMedicament = {
 type EstatParsing = 'idle' | 'parsejant' | 'comprovant' | 'llest' | 'error'
 
 const CAPÇALERA_ESPERADA = [
-  'nom_medicament', 'principi_actiu', 'lot', 'quantitat', 'unitat', 'preu', 'dies_supressio',
+  'nom_medicament', 'principi_actiu', 'lot',
+  'nombre_unitats', 'unitat_paquet', 'quantitat_per_unitat', 'unitat_contingut',
+  'preu', 'dies_supressio',
 ]
 
 /**
@@ -182,8 +184,10 @@ export function useImportarMedicaments() {
       nom_medicament: f.dades.nom_medicament.trim(),
       principi_actiu: f.dades.principi_actiu.trim(),
       lot: f.dades.lot.trim(),
-      quantitat: f.dades.quantitat.trim(),
-      unitat: f.dades.unitat.trim(),
+      nombre_unitats: f.dades.nombre_unitats.trim(),
+      unitat_paquet: f.dades.unitat_paquet.trim(),
+      quantitat_per_unitat: f.dades.quantitat_per_unitat.trim(),
+      unitat_contingut: f.dades.unitat_contingut.trim(),
       posologia: f.dades.posologia?.trim() || '',
       preu: f.dades.preu.trim(),
       dies_supressio: f.dades.dies_supressio.trim(),

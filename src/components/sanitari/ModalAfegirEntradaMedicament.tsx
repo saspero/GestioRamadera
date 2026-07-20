@@ -26,13 +26,11 @@ type ModalAfegirEntradaMedicamentProps = {
  * @param props.onDesat - Callback en confirmar amb èxit
  * @returns Modal amb selector de medicament del catàleg + dades de l'entrada
  *
- * @remarks Edició afegida juliol 2026 — abans només es podien crear
- * entrades noves, no corregir-ne cap un cop desada (ex: un error de
- * lot o de preu introduït).
- * @remarks "Quantitat" es demana com "Nombre d'ampolles o sobres"
- * (o la unitat que correspongui) — decisió confirmada amb l'usuari;
- * el camp de BD és el mateix `quantitatEstoc`, només canvia
- * l'etiqueta segons el context d'ús.
+ * @remarks Model d'estoc (juliol 2026, migració
+ * 13_migracio_estoc_unitats_medicaments.sql): l'estoc total ja NO
+ * s'introdueix a mà — es demana el nombre d'ampolles/sobres
+ * (`nombreUnitats`) i quant conté cadascuna (`quantitatPerUnitat`),
+ * i el total es mostra calculat en temps real.
  * @remarks Si el medicament que es vol donar d'alta encara no
  * existeix al catàleg, cal crear-lo primer amb "Nou medicament".
  * @remarks Control d'accés: només es munta des de la pàgina de
@@ -55,24 +53,38 @@ export function ModalAfegirEntradaMedicament({
     entradaExistent?.medicamentCatalegId ?? ''
   )
   const [lot, setLot] = useState(entradaExistent?.lot ?? '')
-  const [quantitatEstoc, setQuantitatEstoc] = useState(
-    entradaExistent ? String(entradaExistent.quantitatEstoc) : ''
+  const [nombreUnitats, setNombreUnitats] = useState(
+    entradaExistent ? String(entradaExistent.nombreUnitats) : ''
   )
-  const [unitatEstoc, setUnitatEstoc] = useState(entradaExistent?.unitatEstoc ?? 'ampolles')
+  const [unitatPaquet, setUnitatPaquet] = useState(entradaExistent?.unitatPaquet ?? 'ampolles')
+  const [quantitatPerUnitat, setQuantitatPerUnitat] = useState(
+    entradaExistent ? String(entradaExistent.quantitatPerUnitat) : ''
+  )
+  const [unitatContingut, setUnitatContingut] = useState(entradaExistent?.unitatContingut ?? 'ml')
   const [preuCompra, setPreuCompra] = useState(entradaExistent ? String(entradaExistent.preuCompra) : '')
+
+  const totalCalculat =
+    nombreUnitats.trim() && quantitatPerUnitat.trim()
+      ? Number(nombreUnitats) * Number(quantitatPerUnitat)
+      : null
 
   const potConfirmar =
     (entradaExistent || medicamentCatalegId !== '') &&
     lot.trim() !== '' &&
-    quantitatEstoc.trim() !== '' &&
+    nombreUnitats.trim() !== '' &&
+    unitatPaquet.trim() !== '' &&
+    quantitatPerUnitat.trim() !== '' &&
+    unitatContingut.trim() !== '' &&
     preuCompra.trim() !== ''
 
   const mutacio = useMutation({
     mutationFn: async () => {
       const bodyComu = {
         lot: lot.trim(),
-        quantitatEstoc: Number(quantitatEstoc),
-        unitatEstoc: unitatEstoc.trim(),
+        nombreUnitats: Number(nombreUnitats),
+        unitatPaquet: unitatPaquet.trim(),
+        quantitatPerUnitat: Number(quantitatPerUnitat),
+        unitatContingut: unitatContingut.trim(),
         preuCompra: Number(preuCompra),
       }
       const url = entradaExistent
@@ -161,31 +173,67 @@ export function ModalAfegirEntradaMedicament({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nombre d&apos;ampolles o sobres *
+              Nombre d&apos;ampolles/sobres *
             </label>
             <input
               type="number"
               step="0.001"
-              value={quantitatEstoc}
-              onChange={(e) => setQuantitatEstoc(e.target.value)}
+              value={nombreUnitats}
+              onChange={(e) => setNombreUnitats(e.target.value)}
               required
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
               disabled={mutacio.isPending}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Unitat *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Unitat de paquet *</label>
             <input
               type="text"
-              value={unitatEstoc}
-              onChange={(e) => setUnitatEstoc(e.target.value)}
-              placeholder="ampolles, sobres, ml..."
+              value={unitatPaquet}
+              onChange={(e) => setUnitatPaquet(e.target.value)}
+              placeholder="ampolles, sobres..."
               required
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
               disabled={mutacio.isPending}
             />
           </div>
         </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Quantitat per unitat *
+            </label>
+            <input
+              type="number"
+              step="0.001"
+              value={quantitatPerUnitat}
+              onChange={(e) => setQuantitatPerUnitat(e.target.value)}
+              placeholder="Ex: 50"
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
+              disabled={mutacio.isPending}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Unitat de contingut *</label>
+            <input
+              type="text"
+              value={unitatContingut}
+              onChange={(e) => setUnitatContingut(e.target.value)}
+              placeholder="ml, g..."
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
+              disabled={mutacio.isPending}
+            />
+          </div>
+        </div>
+
+        {totalCalculat !== null && (
+          <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+            Estoc total: {nombreUnitats} × {quantitatPerUnitat} {unitatContingut} = {totalCalculat.toLocaleString('ca-ES')} {unitatContingut}
+          </p>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Preu de compra (€) *</label>

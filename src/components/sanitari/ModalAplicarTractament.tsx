@@ -59,7 +59,7 @@ export function ModalAplicarTractament({
     queryKey: queryKeys.sanitari.medicaments,
     queryFn: () => fetch('/api/sanitari/medicaments').then((res) => res.json()).then((j) => j.medicaments ?? []),
   })
-  const medicaments = medicamentsBruts.filter((m) => m.quantitatEstoc > 0)
+  const medicaments = medicamentsBruts.filter((m) => m.quantitatEstocTotal > 0)
 
   const { data: lots = [] } = useQuery<LotOpcio[]>({
     queryKey: queryKeys.lots.llistat,
@@ -85,7 +85,7 @@ export function ModalAplicarTractament({
   function handleMedicamentChange(novaId: number | '') {
     setMedicamentId(novaId)
     const medicamentTriat = medicaments.find((m) => m.id === novaId)
-    const unitatCoincident = UNITATS_DOSI.find((u) => u === medicamentTriat?.unitatEstoc)
+    const unitatCoincident = UNITATS_DOSI.find((u) => u === medicamentTriat?.unitatContingut)
     setUnitatDosi(unitatCoincident ?? '')
   }
 

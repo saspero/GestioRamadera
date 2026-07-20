@@ -110,7 +110,8 @@ export function ModalImportarMedicaments({
           <Upload size={40} className="mx-auto text-gray-400 mb-3" />
           <p className="text-gray-600 mb-4">
             Puja un fitxer CSV amb les columnes: nom_medicament, principi_actiu, lot,
-            quantitat, unitat, posologia, preu, dies_supressio
+            nombre_unitats, unitat_paquet, quantitat_per_unitat, unitat_contingut,
+            posologia, preu, dies_supressio
           </p>
           <input
             ref={inputFileRef}
@@ -146,7 +147,8 @@ export function ModalImportarMedicaments({
                 <tr className="text-left text-gray-500">
                   <th className="px-3 py-2 font-medium">Medicament</th>
                   <th className="px-3 py-2 font-medium">Lot</th>
-                  <th className="px-3 py-2 font-medium">Quantitat</th>
+                  <th className="px-3 py-2 font-medium">Unitats</th>
+                  <th className="px-3 py-2 font-medium">Contingut/unitat</th>
                   <th className="px-3 py-2 font-medium">Preu</th>
                   <th className="px-3 py-2 font-medium">Supressió</th>
                   <th className="px-3 py-2 font-medium">Estat</th>
@@ -157,7 +159,8 @@ export function ModalImportarMedicaments({
                   <tr key={f.fila} className={`border-t border-gray-100 ${ESTAT_ESTIL[f.estat]}`}>
                     <td className="px-3 py-1.5 text-gray-900">{f.dades.nom_medicament}</td>
                     <td className="px-3 py-1.5 text-gray-600">{f.dades.lot}</td>
-                    <td className="px-3 py-1.5 text-gray-600">{f.dades.quantitat} {f.dades.unitat}</td>
+                    <td className="px-3 py-1.5 text-gray-600">{f.dades.nombre_unitats} {f.dades.unitat_paquet}</td>
+                    <td className="px-3 py-1.5 text-gray-600">{f.dades.quantitat_per_unitat} {f.dades.unitat_contingut}</td>
                     <td className="px-3 py-1.5 text-gray-600">{f.dades.preu}</td>
                     <td className="px-3 py-1.5 text-gray-600">{f.dades.dies_supressio}</td>
                     <td className="px-3 py-1.5 text-xs text-gray-600">

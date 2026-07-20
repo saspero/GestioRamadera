@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { TenantContext, Rol } from '@/lib/db/client'
-import { actualitzarEntradaMedicament, eliminarEntradaMedicament } from '@/lib/db/queries/sanitari'
-import { actualitzarEntradaMedicamentSchema } from '@/lib/validators/sanitari'
+import { actualitzarMedicamentCataleg, eliminarMedicamentCataleg } from '@/lib/db/queries/sanitari'
+import { actualitzarMedicamentCatalegSchema } from '@/lib/validators/sanitari'
 
 /**
- * PATCH /api/sanitari/medicaments/[id]
+ * PATCH /api/sanitari/medicaments-cataleg/[id]
  *
- * Actualitza una entrada d'estoc existent.
+ * Actualitza un medicament del catàleg (dades mestres).
  *
- * @remarks `medicamentCatalegId` no és editable — no forma part
- * d'aquest schema.
  * @remarks Control d'accés: Admin i Veterinari.
- * @remarks Multitenancy: delega a actualitzarEntradaMedicament,
+ * @remarks Multitenancy: delega a actualitzarMedicamentCataleg,
  * aïllada via queryTenant/search_path.
  */
 export async function PATCH(
@@ -34,7 +32,7 @@ export async function PATCH(
   try {
     const { id } = await context.params
     const body = await request.json()
-    const parsed = actualitzarEntradaMedicamentSchema.safeParse(body)
+    const parsed = actualitzarMedicamentCatalegSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
         { error: 'Dades incorrectes', details: parsed.error.flatten() },
@@ -42,24 +40,39 @@ export async function PATCH(
       )
     }
 
-    await actualitzarEntradaMedicament(ctx, Number(id), parsed.data)
+    try {
+      await actualitzarMedicamentCataleg(ctx, Number(id), {
+        ...parsed.data,
+        posologiaStandard: parsed.data.posologiaStandard || undefined,
+      })
+    } catch (dbError) {
+      const esDuplicat = dbError instanceof Error && dbError.message.includes('duplicate key')
+      if (esDuplicat) {
+        return NextResponse.json(
+          { error: 'Ja existeix un medicament amb aquest nom al catàleg' },
+          { status: 409 }
+        )
+      }
+      throw dbError
+    }
+
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error('[PATCH /api/sanitari/medicaments/[id]]', error)
+    console.error('[PATCH /api/sanitari/medicaments-cataleg/[id]]', error)
     return NextResponse.json({ error: 'Error intern del servidor' }, { status: 500 })
   }
 }
 
 /**
- * DELETE /api/sanitari/medicaments/[id]
+ * DELETE /api/sanitari/medicaments-cataleg/[id]
  *
- * Elimina una entrada d'estoc.
+ * Elimina un medicament del catàleg.
  *
- * @remarks Si hi ha tractaments que referencien aquesta entrada, la
- * BD rebutja l'eliminació per FK — es tradueix a un 409 amb
- * missatge clar.
+ * @remarks Si hi ha entrades d'estoc que en depenen, la BD rebutja
+ * l'eliminació per FK (ON DELETE RESTRICT) — es tradueix a un 409
+ * amb missatge clar.
  * @remarks Control d'accés: Admin i Veterinari.
- * @remarks Multitenancy: delega a eliminarEntradaMedicament, aïllada
+ * @remarks Multitenancy: delega a eliminarMedicamentCataleg, aïllada
  * via queryTenant/search_path.
  */
 export async function DELETE(
@@ -82,14 +95,14 @@ export async function DELETE(
   try {
     const { id } = await context.params
     try {
-      await eliminarEntradaMedicament(ctx, Number(id))
+      await eliminarMedicamentCataleg(ctx, Number(id))
     } catch (dbError) {
       const esViolacioFk =
         dbError instanceof Error &&
         (dbError.message.includes('foreign key') || dbError.message.includes('violates'))
       if (esViolacioFk) {
         return NextResponse.json(
-          { error: 'No es pot eliminar: hi ha tractaments que fan servir aquesta entrada d\'estoc' },
+          { error: 'No es pot eliminar: hi ha entrades d\'estoc que fan servir aquest medicament' },
           { status: 409 }
         )
       }
@@ -97,7 +110,7 @@ export async function DELETE(
     }
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error('[DELETE /api/sanitari/medicaments/[id]]', error)
+    console.error('[DELETE /api/sanitari/medicaments-cataleg/[id]]', error)
     return NextResponse.json({ error: 'Error intern del servidor' }, { status: 500 })
   }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { Pencil } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { formatNumber } from '@/lib/format'
 import { PaginacioControls } from '@/components/ui/PaginacioControls'
 import { usePaginacio } from '@/hooks/usePaginacio'
@@ -9,9 +9,10 @@ import type { Medicament } from '@/types/sanitari'
 type TaulaMedicamentsProps = {
   medicaments: Medicament[]
   carregant: boolean
-  /** Si false (rol Treballador), s'amaga el botó d'editar. */
+  /** Si false (rol Treballador), s'amaguen els botons d'editar i eliminar. */
   potEditar: boolean
   onEditar: (medicament: Medicament) => void
+  onEliminar: (medicament: Medicament) => void
 }
 
 /**
@@ -19,19 +20,25 @@ type TaulaMedicamentsProps = {
  *
  * @param props.medicaments - Medicaments a mostrar
  * @param props.carregant - Indica si s'està carregant
- * @param props.potEditar - Si true, mostra el botó d'editar cada entrada
+ * @param props.potEditar - Si true, mostra els botons d'editar/eliminar
  * @param props.onEditar - Callback per obrir el modal d'edició
+ * @param props.onEliminar - Callback per eliminar una entrada
  * @returns Taula responsive amb l'inventari, paginat
  *
- * @remarks Edició afegida juliol 2026 — abans les entrades d'estoc
- * no es podien corregir un cop desades.
+ * @remarks Model d'estoc (juliol 2026): la columna "Estoc" mostra
+ * ara el nombre d'unitats i el total calculat (Ex: "9,4 ampolles
+ * (470 ml)"), en comptes d'un total introduït a mà.
+ * @remarks Eliminació afegida juliol 2026.
  * @remarks PAGINACIÓ: usePaginacio(), 25 files per pàgina, només al
  * client.
- * @remarks Els medicaments amb estoc a 0 es mostren igualment
- * (segueixen visibles a l'historial, docs/06_modul_sanitari.md,
- * secció 2.2) però amb l'estoc destacat en vermell.
  */
-export function TaulaMedicaments({ medicaments, carregant, potEditar, onEditar }: TaulaMedicamentsProps) {
+export function TaulaMedicaments({
+  medicaments,
+  carregant,
+  potEditar,
+  onEditar,
+  onEliminar,
+}: TaulaMedicamentsProps) {
   const { dadesPagina, paginaActual, totalPagines, totalFiles, paginaAnterior, paginaSeguent } =
     usePaginacio(medicaments, 25)
 
@@ -43,7 +50,8 @@ export function TaulaMedicaments({ medicaments, carregant, potEditar, onEditar }
             <th className="px-4 py-2 font-medium">Medicament</th>
             <th className="px-4 py-2 font-medium">Principi actiu</th>
             <th className="px-4 py-2 font-medium">Lot</th>
-            <th className="px-4 py-2 font-medium text-right">Estoc</th>
+            <th className="px-4 py-2 font-medium text-right">Unitats</th>
+            <th className="px-4 py-2 font-medium text-right">Total estoc</th>
             <th className="px-4 py-2 font-medium text-right">Preu</th>
             <th className="px-4 py-2 font-medium text-right">Dies supressió</th>
             {potEditar && <th className="px-4 py-2 font-medium"></th>}
@@ -52,13 +60,13 @@ export function TaulaMedicaments({ medicaments, carregant, potEditar, onEditar }
         <tbody>
           {carregant ? (
             <tr>
-              <td colSpan={potEditar ? 7 : 6} className="px-4 py-6 text-center text-gray-500">
+              <td colSpan={potEditar ? 8 : 7} className="px-4 py-6 text-center text-gray-500">
                 Carregant...
               </td>
             </tr>
           ) : dadesPagina.length === 0 ? (
             <tr>
-              <td colSpan={potEditar ? 7 : 6} className="px-4 py-6 text-center text-gray-500">
+              <td colSpan={potEditar ? 8 : 7} className="px-4 py-6 text-center text-gray-500">
                 Cap medicament a l&apos;inventari.
               </td>
             </tr>
@@ -68,20 +76,32 @@ export function TaulaMedicaments({ medicaments, carregant, potEditar, onEditar }
                 <td className="px-4 py-2.5 font-medium text-gray-900">{m.nomMedicament}</td>
                 <td className="px-4 py-2.5 text-gray-700">{m.principiActiu}</td>
                 <td className="px-4 py-2.5 text-gray-700">{m.lot}</td>
-                <td className={`px-4 py-2.5 text-right ${m.quantitatEstoc <= 0 ? 'text-red-600 font-medium' : 'text-gray-700'}`}>
-                  {formatNumber(m.quantitatEstoc)} {m.unitatEstoc}
+                <td className="px-4 py-2.5 text-right text-gray-700">
+                  {formatNumber(m.nombreUnitats, 1)} {m.unitatPaquet}
+                </td>
+                <td className={`px-4 py-2.5 text-right ${m.quantitatEstocTotal <= 0 ? 'text-red-600 font-medium' : 'text-gray-700'}`}>
+                  {formatNumber(m.quantitatEstocTotal)} {m.unitatContingut}
                 </td>
                 <td className="px-4 py-2.5 text-right text-gray-700">{formatNumber(m.preuCompra)} €</td>
                 <td className="px-4 py-2.5 text-right text-gray-700">{m.diesSupressio}</td>
                 {potEditar && (
                   <td className="px-4 py-2.5">
-                    <button
-                      onClick={() => onEditar(m)}
-                      className="p-1.5 rounded-lg hover:bg-gray-100"
-                      aria-label={`Editar ${m.nomMedicament}`}
-                    >
-                      <Pencil size={14} />
-                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => onEditar(m)}
+                        className="p-1.5 rounded-lg hover:bg-gray-100"
+                        aria-label={`Editar ${m.nomMedicament}`}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => onEliminar(m)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-gray-100"
+                        aria-label={`Eliminar ${m.nomMedicament}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </td>
                 )}
               </tr>

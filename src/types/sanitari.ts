@@ -1,9 +1,14 @@
 /**
  * Medicament de l'inventari sanitari (una entrada d'estoc/compra).
  * @remarks nomMedicament/principiActiu/posologiaStandard/diesSupressio
- * són ara dades del catàleg (medicaments_cataleg), incloses aquí via
- * JOIN per conveniència de la UI — no viuen físicament en aquesta
- * taula des de la migració 10_migracio_cataleg_medicaments.sql.
+ * són dades del catàleg (medicaments_cataleg), incloses aquí via
+ * JOIN per conveniència de la UI.
+ * @remarks Model d'estoc (juliol 2026, migració
+ * 13_migracio_estoc_unitats_medicaments.sql): l'estoc total ja no
+ * s'introdueix a mà — es calcula com `nombreUnitats × quantitatPerUnitat`
+ * i es retorna ja calculat a `quantitatEstocTotal`. `nombreUnitats`
+ * pot tenir decimals després de consumir una dosi parcial d'una
+ * unitat (Ex: 9,4 ampolles de 50ml restants).
  */
 export type Medicament = {
   id: number
@@ -11,8 +16,12 @@ export type Medicament = {
   nomMedicament: string
   principiActiu: string
   lot: string
-  quantitatEstoc: number
-  unitatEstoc: string
+  nombreUnitats: number
+  unitatPaquet: string
+  quantitatPerUnitat: number
+  unitatContingut: string
+  /** Calculat: nombreUnitats × quantitatPerUnitat. Mai s'envia al backend, només es rep. */
+  quantitatEstocTotal: number
   posologiaStandard: string | null
   preuCompra: number
   diesSupressio: number
@@ -64,18 +73,18 @@ export type TractamentAmbMedicament = {
 
 /**
  * Fila individual del CSV d'importació massiva de medicaments.
- * @remarks Format sense canvis (decisió confirmada): cada fila
- * segueix incloent totes les dades (nom, principi actiu, posologia,
- * dies de supressió) encara que el medicament ja existeixi al
- * catàleg — si ja hi és, aquestes dades s'ignoren i només s'afegeix
- * l'entrada d'estoc; si és nou, es crea el catàleg i l'estoc alhora.
+ * @remarks Format ACTUALITZAT (juliol 2026) amb el nou model d'estoc:
+ * `quantitat`+`unitat` d'una sola columna passen a ser
+ * `nombre_unitats`+`unitat_paquet`+`quantitat_per_unitat`+`unitat_contingut`.
  */
 export type FilaCsvMedicament = {
   nom_medicament: string
   principi_actiu: string
   lot: string
-  quantitat: string
-  unitat: string
+  nombre_unitats: string
+  unitat_paquet: string
+  quantitat_per_unitat: string
+  unitat_contingut: string
   posologia: string
   preu: string
   dies_supressio: string

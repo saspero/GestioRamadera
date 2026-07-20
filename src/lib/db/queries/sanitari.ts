@@ -3,14 +3,16 @@ import type { Medicament, MedicamentCataleg, TractamentAmbMedicament } from '@/t
 
 /**
  * Retorna tots els medicaments de l'inventari (entrades d'estoc),
- * amb les dades del catàleg incloses via JOIN.
+ * amb les dades del catàleg incloses via JOIN i l'estoc total ja
+ * calculat.
  *
  * @param ctx - Context del tenant (schema, usuari, rol)
  * @returns Array de medicaments
  *
- * @remarks Des de la migració 10_migracio_cataleg_medicaments.sql,
- * nom/principiActiu/posologiaStandard/diesSupressio ja no viuen a
- * `medicaments` — es llegeixen via JOIN a `medicaments_cataleg`.
+ * @remarks Model d'estoc (juliol 2026, migració
+ * 13_migracio_estoc_unitats_medicaments.sql): `quantitatEstocTotal`
+ * es calcula a la mateixa query (`nombre_unitats * quantitat_per_unitat`),
+ * no és una columna física.
  * @remarks Control d'accés: Admin i Veterinari (lectura+escriptura),
  * Treballador només lectura.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
@@ -22,8 +24,11 @@ export async function getMedicaments(ctx: TenantContext): Promise<Medicament[]> 
     nomMedicament: string
     principiActiu: string
     lot: string
-    quantitatEstoc: string
-    unitatEstoc: string
+    nombreUnitats: string
+    unitatPaquet: string
+    quantitatPerUnitat: string
+    unitatContingut: string
+    quantitatEstocTotal: string
     posologiaStandard: string | null
     preuCompra: string
     diesSupressio: number
@@ -35,8 +40,11 @@ export async function getMedicaments(ctx: TenantContext): Promise<Medicament[]> 
        mc.nom_medicament       AS "nomMedicament",
        mc.principi_actiu       AS "principiActiu",
        m.lot,
-       m.quantitat_estoc       AS "quantitatEstoc",
-       m.unitat_estoc          AS "unitatEstoc",
+       m.nombre_unitats        AS "nombreUnitats",
+       m.unitat_paquet         AS "unitatPaquet",
+       m.quantitat_per_unitat  AS "quantitatPerUnitat",
+       m.unitat_contingut      AS "unitatContingut",
+       (m.nombre_unitats * m.quantitat_per_unitat) AS "quantitatEstocTotal",
        mc.posologia_standard   AS "posologiaStandard",
        m.preu_compra           AS "preuCompra",
        mc.dies_supressio       AS "diesSupressio"
@@ -46,7 +54,9 @@ export async function getMedicaments(ctx: TenantContext): Promise<Medicament[]> 
   )
   return rows.map((r) => ({
     ...r,
-    quantitatEstoc: Number(r.quantitatEstoc),
+    nombreUnitats: Number(r.nombreUnitats),
+    quantitatPerUnitat: Number(r.quantitatPerUnitat),
+    quantitatEstocTotal: Number(r.quantitatEstocTotal),
     preuCompra: Number(r.preuCompra),
   }))
 }
@@ -75,10 +85,6 @@ export async function getMedicamentsCataleg(ctx: TenantContext): Promise<Medicam
 /**
  * Crea un medicament nou al catàleg (només dades mestres, sense estoc).
  *
- * @param ctx - Context del tenant (schema, usuari, rol)
- * @param params - Nom, principi actiu, posologia i dies de supressió
- * @returns L'id del medicament del catàleg creat
- *
  * @remarks `nom_medicament` té una constraint UNIQUE — un nom
  * duplicat llençarà un error que l'endpoint ha de traduir a un
  * missatge clar.
@@ -105,12 +111,104 @@ export async function crearMedicamentCataleg(
 }
 
 /**
- * Actualitza una entrada d'estoc existent (lot, quantitat, unitat, preu).
+ * Actualitza un medicament del catàleg (dades mestres).
  *
  * @param ctx - Context del tenant (schema, usuari, rol)
- * @param id - Id de l'entrada d'estoc
- * @param params - Lot, quantitat, unitat i preu nous
+ * @param id - Id del medicament del catàleg
+ * @param params - Nom, principi actiu, posologia i dies de supressió
  * @returns Promise que es resol un cop desat el canvi
+ *
+ * @remarks Nou (juliol 2026). `nom_medicament` UNIQUE — un nom
+ * duplicat llençarà un error que l'endpoint ha de traduir.
+ * @remarks Control d'accés: Admin i Veterinari.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function actualitzarMedicamentCataleg(
+  ctx: TenantContext,
+  id: number,
+  params: {
+    nomMedicament: string
+    principiActiu: string
+    posologiaStandard?: string
+    diesSupressio: number
+  }
+): Promise<void> {
+  await queryTenant(
+    ctx,
+    `UPDATE medicaments_cataleg
+     SET nom_medicament = $1, principi_actiu = $2, posologia_standard = $3, dies_supressio = $4
+     WHERE id = $5`,
+    [params.nomMedicament, params.principiActiu, params.posologiaStandard ?? null, params.diesSupressio, id]
+  )
+}
+
+/**
+ * Elimina un medicament del catàleg.
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param id - Id del medicament del catàleg
+ * @returns Promise que es resol un cop eliminat
+ *
+ * @remarks Nou (juliol 2026). La FK `medicaments.medicament_cataleg_id`
+ * és `ON DELETE RESTRICT` — si hi ha entrades d'estoc que en
+ * depenen, la BD rebutja l'eliminació amb un error de constraint
+ * que l'endpoint tradueix a un missatge clar.
+ * @remarks Control d'accés: Admin i Veterinari.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function eliminarMedicamentCataleg(ctx: TenantContext, id: number): Promise<void> {
+  await queryTenant(ctx, `DELETE FROM medicaments_cataleg WHERE id = $1`, [id])
+}
+
+/**
+ * Afegeix una entrada d'estoc (compra/lot) d'un medicament ja
+ * existent al catàleg.
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param params - Medicament del catàleg, lot, nombre d'unitats,
+ * unitat de paquet, quantitat per unitat, unitat de contingut i preu
+ * @returns L'id de l'entrada d'estoc creada
+ *
+ * @remarks Model d'estoc (juliol 2026): l'estoc total NO s'introdueix
+ * a mà — es calcula com nombreUnitats × quantitatPerUnitat.
+ * @remarks Control d'accés: Admin i Veterinari.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
+ */
+export async function afegirEntradaMedicament(
+  ctx: TenantContext,
+  params: {
+    medicamentCatalegId: number
+    lot: string
+    nombreUnitats: number
+    unitatPaquet: string
+    quantitatPerUnitat: number
+    unitatContingut: string
+    preuCompra: number
+  }
+): Promise<{ id: number }> {
+  const rows = await queryTenant<{ id: number }>(
+    ctx,
+    `INSERT INTO medicaments (
+       medicament_cataleg_id, lot, nombre_unitats, unitat_paquet,
+       quantitat_per_unitat, unitat_contingut, preu_compra
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id`,
+    [
+      params.medicamentCatalegId,
+      params.lot,
+      params.nombreUnitats,
+      params.unitatPaquet,
+      params.quantitatPerUnitat,
+      params.unitatContingut,
+      params.preuCompra,
+    ]
+  )
+  return rows[0]
+}
+
+/**
+ * Actualitza una entrada d'estoc existent.
  *
  * @remarks `medicamentCatalegId` NO és editable — es fixa en crear
  * l'entrada, igual que `ubicacioId` a una sitja.
@@ -120,50 +218,48 @@ export async function crearMedicamentCataleg(
 export async function actualitzarEntradaMedicament(
   ctx: TenantContext,
   id: number,
-  params: { lot: string; quantitatEstoc: number; unitatEstoc: string; preuCompra: number }
+  params: {
+    lot: string
+    nombreUnitats: number
+    unitatPaquet: string
+    quantitatPerUnitat: number
+    unitatContingut: string
+    preuCompra: number
+  }
 ): Promise<void> {
   await queryTenant(
     ctx,
     `UPDATE medicaments
-     SET lot = $1, quantitat_estoc = $2, unitat_estoc = $3, preu_compra = $4
-     WHERE id = $5`,
-    [params.lot, params.quantitatEstoc, params.unitatEstoc, params.preuCompra, id]
+     SET lot = $1, nombre_unitats = $2, unitat_paquet = $3,
+         quantitat_per_unitat = $4, unitat_contingut = $5, preu_compra = $6
+     WHERE id = $7`,
+    [
+      params.lot,
+      params.nombreUnitats,
+      params.unitatPaquet,
+      params.quantitatPerUnitat,
+      params.unitatContingut,
+      params.preuCompra,
+      id,
+    ]
   )
 }
 
 /**
- * Afegeix una entrada d'estoc (compra/lot) d'un medicament ja
- * existent al catàleg.
+ * Elimina una entrada d'estoc.
  *
  * @param ctx - Context del tenant (schema, usuari, rol)
- * @param params - Medicament del catàleg, lot, quantitat, unitat i preu
- * @returns L'id de l'entrada d'estoc creada
+ * @param id - Id de l'entrada d'estoc
+ * @returns Promise que es resol un cop eliminada
  *
- * @remarks Substitueix l'antiga crearMedicament() (que creava
- * catàleg+estoc alhora) — ara el catàleg ja ha d'existir prèviament
- * (creat amb crearMedicamentCataleg o automàticament per la
- * importació CSV).
+ * @remarks Nou (juliol 2026). Si hi ha tractaments que referencien
+ * aquesta entrada (`tractaments.medicament_id`), la BD rebutjarà
+ * l'eliminació per FK — l'endpoint tradueix l'error a un missatge clar.
  * @remarks Control d'accés: Admin i Veterinari.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
-export async function afegirEntradaMedicament(
-  ctx: TenantContext,
-  params: {
-    medicamentCatalegId: number
-    lot: string
-    quantitatEstoc: number
-    unitatEstoc: string
-    preuCompra: number
-  }
-): Promise<{ id: number }> {
-  const rows = await queryTenant<{ id: number }>(
-    ctx,
-    `INSERT INTO medicaments (medicament_cataleg_id, lot, quantitat_estoc, unitat_estoc, preu_compra)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id`,
-    [params.medicamentCatalegId, params.lot, params.quantitatEstoc, params.unitatEstoc, params.preuCompra]
-  )
-  return rows[0]
+export async function eliminarEntradaMedicament(ctx: TenantContext, id: number): Promise<void> {
+  await queryTenant(ctx, `DELETE FROM medicaments WHERE id = $1`, [id])
 }
 
 /**
@@ -171,15 +267,7 @@ export async function afegirEntradaMedicament(
  * a entrada d'estoc, per a la detecció de duplicats de la
  * importació CSV.
  *
- * @param ctx - Context del tenant (schema, usuari, rol)
- * @param combinacions - Parells [nomMedicament, lot] a comprovar
- * @returns Array dels ids d'entrada d'estoc existents, indexat pel
- * mateix ordre que `combinacions` (null si no existeix)
- *
- * @remarks El nom es resol contra el catàleg via JOIN — si el
- * medicament encara no existeix al catàleg, automàticament no hi
- * ha cap entrada d'estoc que hi coincideixi (retorna null), cosa
- * correcta.
+ * @remarks Sense canvis respecte a la versió anterior.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function trobarEntradesExistents(
@@ -211,26 +299,23 @@ export async function trobarEntradesExistents(
 /**
  * Importa un bloc de medicaments des del CSV. Per a cada fila:
  * si el nom del medicament ja existeix al catàleg, en reutilitza
- * l'id (ignorant principi actiu/posologia/dies de supressió del
- * CSV, que podrien no coincidir amb el catàleg ja existent); si no
- * existeix, crea l'entrada de catàleg automàticament amb les dades
- * de la fila. Després, si ja hi ha una entrada d'estoc amb el mateix
- * lot per a aquest medicament, en suma la quantitat; si no, en crea
- * una de nova.
+ * l'id; si no, crea l'entrada de catàleg automàticament. Després,
+ * si ja hi ha una entrada d'estoc amb el mateix lot, en suma
+ * `nombre_unitats`; si no, en crea una de nova.
  *
  * @param ctx - Context del tenant (schema, usuari, rol)
  * @param medicaments - Files ja validades i convertides a números
  * @returns Recompte de catàlegs creats, entrades noves i entrades actualitzades
  *
- * @remarks Format del CSV SENSE CANVIS (decisió confirmada amb
- * l'usuari) — cada fila continua portant totes les dades del
- * medicament, encara que ja estigui cataloguat, per mantenir la
- * comoditat d'importar directament des d'un albarà de proveïdor.
+ * @remarks Format del CSV ACTUALITZAT (juliol 2026) amb el nou model
+ * d'estoc — `nombre_unitats`+`unitat_paquet`+`quantitat_per_unitat`+
+ * `unitat_contingut` en comptes de `quantitat`+`unitat`.
+ * @remarks En sumar a una entrada existent, només se suma
+ * `nombre_unitats` — `quantitat_per_unitat` es manté la de l'entrada
+ * ja existent (assumeix que el mateix lot ve sempre amb el mateix
+ * envasat).
  * @remarks Control d'accés: Admin i Veterinari. Comprovat a l'endpoint.
- * @remarks Multitenancy: aïllat via queryTenant/search_path. Cada
- * fila es processa amb crides pròpies (no una única transacció
- * gegant) — un error en una fila no ha de desfer les altres ja
- * processades correctament.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
 export async function importarMedicamentsMassiu(
   ctx: TenantContext,
@@ -238,8 +323,10 @@ export async function importarMedicamentsMassiu(
     nomMedicament: string
     principiActiu: string
     lot: string
-    quantitat: number
-    unitat: string
+    nombreUnitats: number
+    unitatPaquet: string
+    quantitatPerUnitat: number
+    unitatContingut: string
     posologia?: string
     preu: number
     diesSupressio: number
@@ -249,7 +336,6 @@ export async function importarMedicamentsMassiu(
   let nombreEntradesCreades = 0
   let nombreEntradesActualitzades = 0
 
-  // Precàrrega dels catàlegs existents que coincideixin amb els noms del bloc
   const nomsUnics = [...new Set(medicaments.map((m) => m.nomMedicament))]
   const catalegsExistents = await queryTenant<{ id: number; nom_medicament: string }>(
     ctx,
@@ -283,16 +369,19 @@ export async function importarMedicamentsMassiu(
     if (entradaExistent.length > 0) {
       await queryTenant(
         ctx,
-        `UPDATE medicaments SET quantitat_estoc = quantitat_estoc + $1 WHERE id = $2`,
-        [m.quantitat, entradaExistent[0].id]
+        `UPDATE medicaments SET nombre_unitats = nombre_unitats + $1 WHERE id = $2`,
+        [m.nombreUnitats, entradaExistent[0].id]
       )
       nombreEntradesActualitzades++
     } else {
       await queryTenant(
         ctx,
-        `INSERT INTO medicaments (medicament_cataleg_id, lot, quantitat_estoc, unitat_estoc, preu_compra)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [catalegId, m.lot, m.quantitat, m.unitat, m.preu]
+        `INSERT INTO medicaments (
+           medicament_cataleg_id, lot, nombre_unitats, unitat_paquet,
+           quantitat_per_unitat, unitat_contingut, preu_compra
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [catalegId, m.lot, m.nombreUnitats, m.unitatPaquet, m.quantitatPerUnitat, m.unitatContingut, m.preu]
       )
       nombreEntradesCreades++
     }
@@ -305,8 +394,7 @@ export async function importarMedicamentsMassiu(
  * Retorna els tractaments aplicats, amb el nom del medicament i el
  * DIB de l'animal, ordenats pels més recents primer.
  *
- * @remarks JOIN afegit a medicaments_cataleg per obtenir el nom
- * (ja no viu a medicaments des de la migració del catàleg).
+ * @remarks Sense canvis respecte a la versió anterior.
  * @remarks Control d'accés: Admin, Veterinari, i Treballador (lectura).
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
@@ -357,9 +445,13 @@ export async function getTractaments(
  * amb la mateixa dosi/data per a tots), i desconta la dosi total de
  * l'estoc del medicament.
  *
- * @remarks Sense canvis funcionals respecte a la versió anterior —
- * `medicaments.id` (l'entrada d'estoc concreta triada al formulari)
- * segueix sent el que es referencia, no el catàleg.
+ * @remarks Model d'estoc (juliol 2026): el descompte ja NO resta
+ * directament d'un total (`quantitat_estoc`), sinó que resta
+ * `dosiTotal / quantitat_per_unitat` de `nombre_unitats` — mantenint
+ * `quantitat_per_unitat` fix, `nombre_unitats` pot quedar amb
+ * decimals (Ex: 9,4 ampolles de 50ml restants després de descomptar
+ * 30ml). El càlcul es fa dins la mateixa UPDATE (referenciant
+ * quantitat_per_unitat de la mateixa fila), no cal llegir-lo abans.
  * @remarks Control d'accés: Admin i Veterinari. Comprovat a l'endpoint.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
@@ -393,7 +485,7 @@ export async function aplicarTractament(
      ),
      descompte_estoc AS (
        UPDATE medicaments
-       SET quantitat_estoc = quantitat_estoc - $9
+       SET nombre_unitats = nombre_unitats - ($9::decimal / quantitat_per_unitat)
        WHERE id = $2::integer
      )
      SELECT id FROM nous_tractaments`,
@@ -438,22 +530,11 @@ export async function getAnimalIdsDelLot(
 /**
  * Actualitza un tractament ja aplicat (dosi, data de fi prevista i notes).
  *
- * @param ctx - Context del tenant (schema, usuari, rol)
- * @param id - Id del tractament
- * @param params - Dosi aplicada, data de fi prevista i notes (tots opcionals)
- * @returns Promise que es resol un cop desat el canvi
- *
- * @remarks NOMÉS aquests tres camps són editables (decisió confirmada
- * amb l'usuari) — l'animal, el medicament i la data d'inici no es
- * poden canviar un cop aplicat el tractament.
+ * @remarks NOMÉS aquests tres camps són editables — l'animal, el
+ * medicament i la data d'inici no es poden canviar un cop aplicat
+ * el tractament.
  * @remarks NO ajusta retroactivament l'estoc del medicament — el
  * descompte ja es va fer en aplicar el tractament originalment.
- * Si cal corregir l'estoc arran d'una edició de dosi, es fa
- * manualment editant l'entrada d'estoc (mateix criteri que l'estoc
- * negatiu, gestió manual).
- * @remarks NO recalcula data_alliberament — el trigger de BD
- * (fn_calcula_data_alliberament) només es dispara en funció de
- * data_inici, que no és editable des d'aquí.
  * @remarks Control d'accés: Admin i Veterinari.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
@@ -472,25 +553,13 @@ export async function actualitzarTractament(
 }
 
 /**
- * Elimina un tractament (DELETE real, decisió confirmada amb
+ * Elimina un tractament (DELETE real — decisió confirmada amb
  * l'usuari), després de desar-ne una còpia (snapshot) al log
  * d'eliminacions amb el motiu indicat.
  *
- * @param ctx - Context del tenant (schema, usuari, rol)
- * @param id - Id del tractament a eliminar
- * @param params - Motiu (predefinit) i motiuAltres (text lliure, si motiu === 'Altres')
- * @returns true si s'ha eliminat i registrat correctament, false si
- * el tractament no existia
- *
  * @remarks IMPORTANT: si l'animal encara estava en període de
- * supressió (bloqueig comercial) per aquest tractament, eliminar-lo
- * aixeca el bloqueig a l'instant — decisió confirmada explícitament
- * amb l'usuari (eliminació real, no "tova"). El log preserva quines
- * dades tenia el tractament eliminat, incloent-hi data_alliberament,
- * per a consulta posterior si calgués justificar-ho.
- * @remarks Tot en una única transacció (DELETE...RETURNING com a CTE
- * + INSERT al log a partir d'aquest resultat) — si l'INSERT del log
- * fallés per qualsevol motiu, el DELETE tampoc es faria efectiu.
+ * supressió per aquest tractament, eliminar-lo aixeca el bloqueig
+ * comercial a l'instant.
  * @remarks Control d'accés: Admin i Veterinari.
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
  */
