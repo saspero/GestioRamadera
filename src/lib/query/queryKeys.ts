@@ -28,6 +28,7 @@ export const queryKeys = {
   },
   sanitari: {
     medicaments: ['sanitari', 'medicaments'] as const,
+    medicamentsCataleg: ['sanitari', 'medicaments-cataleg'] as const,
     tractaments: ['sanitari', 'tractaments'] as const,
   },
   logistica: {
@@ -42,10 +43,5 @@ export const queryKeys = {
     llistat: (cerca: string, motiu: string, dataDes: string, dataFins: string) =>
       ['arxiu', 'llistat', cerca, motiu, dataDes, dataFins] as const,
     fitxa: (id: number) => ['arxiu', 'fitxa', id] as const,
-  },
-  configuracio: {
-    usuaris: ['configuracio', 'usuaris'] as const,
-    races: ['configuracio', 'races'] as const,
-    general: ['configuracio', 'general'] as const,
   },
 }

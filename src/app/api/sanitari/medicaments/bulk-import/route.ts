@@ -22,7 +22,7 @@ function parseNumeroCatala(valor: string): number {
  * docs/06_modul_sanitari.md, secció 3.3, ampliat).
  *
  * @param request - Body: { medicaments: FilaCsvMedicament[] }
- * @returns JSON { nombreCreats, nombreActualitzats }, o error 400/401/403/500
+ * @returns JSON { nombreCatalegsCreats, nombreEntradesCreades, nombreEntradesActualitzades }, o error 400/401/403/500
  *
  * @remarks Control d'accés: Admin i Veterinari.
  * @remarks Conversió numèrica: els camps quantitat/preu arriben com

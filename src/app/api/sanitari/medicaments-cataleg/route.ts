@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { TenantContext, Rol } from '@/lib/db/client'
 import { auditLog } from '@/lib/db/client'
-import { getMedicaments, afegirEntradaMedicament } from '@/lib/db/queries/sanitari'
-import { afegirEntradaMedicamentSchema } from '@/lib/validators/sanitari'
+import { getMedicamentsCataleg, crearMedicamentCataleg } from '@/lib/db/queries/sanitari'
+import { crearMedicamentCatalegSchema } from '@/lib/validators/sanitari'
 
 /**
- * GET /api/sanitari/medicaments
+ * GET /api/sanitari/medicaments-cataleg
  *
- * Retorna l'inventari complet de medicaments (entrades d'estoc, amb
- * les dades del catàleg incloses).
+ * Retorna el catàleg complet de medicaments (dades mestres).
  *
  * @remarks Control d'accés: Admin i Veterinari (lectura+escriptura),
  * Treballador només lectura.
- * @remarks Multitenancy: delega a getMedicaments, aïllada via
+ * @remarks Multitenancy: delega a getMedicamentsCataleg, aïllada via
  * queryTenant/search_path.
  */
 export async function GET(request: NextRequest) {
@@ -27,27 +26,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const medicaments = await getMedicaments(ctx)
-    return NextResponse.json({ medicaments })
+    const medicamentsCataleg = await getMedicamentsCataleg(ctx)
+    return NextResponse.json({ medicamentsCataleg })
   } catch (error) {
-    console.error('[GET /api/sanitari/medicaments]', error)
+    console.error('[GET /api/sanitari/medicaments-cataleg]', error)
     return NextResponse.json({ error: 'Error intern del servidor' }, { status: 500 })
   }
 }
 
 /**
- * POST /api/sanitari/medicaments
+ * POST /api/sanitari/medicaments-cataleg
  *
- * Afegeix una entrada d'estoc (compra/lot) d'un medicament ja
- * existent al catàleg.
+ * Crea un medicament nou al catàleg (només dades mestres, sense
+ * cap entrada d'estoc).
  *
- * @remarks Substitueix l'antiga semàntica d'aquest endpoint (que
- * creava catàleg+estoc alhora) — des de la migració del catàleg de
- * medicaments, el catàleg es crea per separat (POST
- * /api/sanitari/medicaments-cataleg) i aquest endpoint només
- * requereix `medicamentCatalegId`.
  * @remarks Control d'accés: Admin i Veterinari.
- * @remarks Multitenancy: delega a afegirEntradaMedicament, aïllada
+ * @remarks Multitenancy: delega a crearMedicamentCataleg, aïllada
  * via queryTenant/search_path.
  */
 export async function POST(request: NextRequest) {
@@ -67,7 +61,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const parsed = afegirEntradaMedicamentSchema.safeParse(body)
+    const parsed = crearMedicamentCatalegSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
         { error: 'Dades incorrectes', details: parsed.error.flatten() },
@@ -75,21 +69,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const resultat = await afegirEntradaMedicament(ctx, parsed.data)
+    let resultat
+    try {
+      resultat = await crearMedicamentCataleg(ctx, {
+        ...parsed.data,
+        posologiaStandard: parsed.data.posologiaStandard || undefined,
+      })
+    } catch (dbError) {
+      const esDuplicat =
+        dbError instanceof Error && dbError.message.includes('duplicate key')
+      if (esDuplicat) {
+        return NextResponse.json(
+          { error: 'Ja existeix un medicament amb aquest nom al catàleg' },
+          { status: 409 }
+        )
+      }
+      throw dbError
+    }
 
     await auditLog({
       tenantId,
       userId: ctx.userId,
-      accio: 'AFEGIR_ENTRADA_MEDICAMENT',
-      taulaAfectada: 'medicaments',
+      accio: 'CREAR_MEDICAMENT_CATALEG',
+      taulaAfectada: 'medicaments_cataleg',
       registreId: resultat.id,
-      dadesJson: { medicamentCatalegId: parsed.data.medicamentCatalegId, lot: parsed.data.lot },
+      dadesJson: { nomMedicament: parsed.data.nomMedicament },
       ipOrigen: request.headers.get('x-forwarded-for') ?? undefined,
     })
 
     return NextResponse.json(resultat, { status: 201 })
   } catch (error) {
-    console.error('[POST /api/sanitari/medicaments]', error)
+    console.error('[POST /api/sanitari/medicaments-cataleg]', error)
     return NextResponse.json({ error: 'Error intern del servidor' }, { status: 500 })
   }
 }

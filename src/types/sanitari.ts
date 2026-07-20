@@ -1,8 +1,13 @@
 /**
- * Medicament de l'inventari sanitari.
+ * Medicament de l'inventari sanitari (una entrada d'estoc/compra).
+ * @remarks nomMedicament/principiActiu/posologiaStandard/diesSupressio
+ * són ara dades del catàleg (medicaments_cataleg), incloses aquí via
+ * JOIN per conveniència de la UI — no viuen físicament en aquesta
+ * taula des de la migració 10_migracio_cataleg_medicaments.sql.
  */
 export type Medicament = {
   id: number
+  medicamentCatalegId: number
   nomMedicament: string
   principiActiu: string
   lot: string
@@ -10,6 +15,19 @@ export type Medicament = {
   unitatEstoc: string
   posologiaStandard: string | null
   preuCompra: number
+  diesSupressio: number
+}
+
+/**
+ * Dades mestres d'un medicament del catàleg (nom, principi actiu,
+ * posologia, dies de supressió) — separades de l'estoc des de
+ * juliol 2026.
+ */
+export type MedicamentCataleg = {
+  id: number
+  nomMedicament: string
+  principiActiu: string
+  posologiaStandard: string | null
   diesSupressio: number
 }
 
@@ -30,7 +48,14 @@ export type TractamentAmbMedicament = {
   notes: string | null
 }
 
-/** Fila individual del CSV d'importació massiva de medicaments. */
+/**
+ * Fila individual del CSV d'importació massiva de medicaments.
+ * @remarks Format sense canvis (decisió confirmada): cada fila
+ * segueix incloent totes les dades (nom, principi actiu, posologia,
+ * dies de supressió) encara que el medicament ja existeixi al
+ * catàleg — si ja hi és, aquestes dades s'ignoren i només s'afegeix
+ * l'entrada d'estoc; si és nou, es crea el catàleg i l'estoc alhora.
+ */
 export type FilaCsvMedicament = {
   nom_medicament: string
   principi_actiu: string

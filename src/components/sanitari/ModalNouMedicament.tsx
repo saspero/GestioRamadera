@@ -13,15 +13,19 @@ type ModalNouMedicamentProps = {
 }
 
 /**
- * Modal de creació manual d'un medicament (fora del flux CSV).
+ * Modal de creació d'un medicament nou al catàleg (dades mestres —
+ * nom, principi actiu, posologia, dies de supressió).
  *
  * @param props.onTancar - Callback per tancar sense desar
  * @param props.onDesat - Callback en confirmar amb èxit
- * @returns Modal amb el formulari complet de la fitxa del medicament
+ * @returns Modal amb el formulari de dades mestres del medicament
  *
- * @remarks MIGRACIÓ REACT QUERY: useMutation pròpia, invalida
- * queryKeys.sanitari.medicaments en tenir èxit.
- * @remarks Camps segons docs/06_modul_sanitari.md, secció 2.1.
+ * @remarks Reescrit (juliol 2026, migració
+ * 10_migracio_cataleg_medicaments.sql): abans aquest modal creava
+ * alhora el catàleg i una entrada d'estoc (lot/quantitat/preu). Ara
+ * només crea l'entrada de catàleg — l'estoc es dona d'alta per
+ * separat amb ModalAfegirEntradaMedicament, seleccionant aquest
+ * medicament del catàleg.
  * @remarks Control d'accés: només es munta des de la pàgina de
  * Sanitari quan rol === 'Admin' || 'Veterinari'.
  */
@@ -29,35 +33,20 @@ export function ModalNouMedicament({ onTancar, onDesat }: ModalNouMedicamentProp
   const queryClient = useQueryClient()
   const [nomMedicament, setNomMedicament] = useState('')
   const [principiActiu, setPrincipiActiu] = useState('')
-  const [lot, setLot] = useState('')
-  const [quantitatEstoc, setQuantitatEstoc] = useState('')
-  const [unitatEstoc, setUnitatEstoc] = useState('ml')
   const [posologiaStandard, setPosologiaStandard] = useState('')
-  const [preuCompra, setPreuCompra] = useState('')
   const [diesSupressio, setDiesSupressio] = useState('')
 
-  const potConfirmar =
-    nomMedicament.trim() &&
-    principiActiu.trim() &&
-    lot.trim() &&
-    quantitatEstoc.trim() &&
-    unitatEstoc.trim() &&
-    preuCompra.trim() &&
-    diesSupressio.trim()
+  const potConfirmar = nomMedicament.trim() && principiActiu.trim() && diesSupressio.trim()
 
   const mutacio = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/sanitari/medicaments', {
+      const res = await fetch('/api/sanitari/medicaments-cataleg', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nomMedicament: nomMedicament.trim(),
           principiActiu: principiActiu.trim(),
-          lot: lot.trim(),
-          quantitatEstoc: Number(quantitatEstoc),
-          unitatEstoc: unitatEstoc.trim(),
           posologiaStandard: posologiaStandard.trim() || undefined,
-          preuCompra: Number(preuCompra),
           diesSupressio: Number(diesSupressio),
         }),
       })
@@ -66,8 +55,8 @@ export function ModalNouMedicament({ onTancar, onDesat }: ModalNouMedicamentProp
       return json
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.sanitari.medicaments })
-      toastExit('Medicament creat correctament')
+      queryClient.invalidateQueries({ queryKey: queryKeys.sanitari.medicamentsCataleg })
+      toastExit('Medicament creat al catàleg')
       onDesat()
     },
     onError: (err) => toastError(err, 'Error en crear el medicament'),
@@ -99,6 +88,7 @@ export function ModalNouMedicament({ onTancar, onDesat }: ModalNouMedicamentProp
             value={nomMedicament}
             onChange={(e) => setNomMedicament(e.target.value)}
             required
+            autoFocus
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
             disabled={mutacio.isPending}
           />
@@ -117,45 +107,6 @@ export function ModalNouMedicament({ onTancar, onDesat }: ModalNouMedicamentProp
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Lot *</label>
-          <input
-            type="text"
-            value={lot}
-            onChange={(e) => setLot(e.target.value)}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
-            disabled={mutacio.isPending}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Quantitat *</label>
-            <input
-              type="number"
-              step="0.001"
-              value={quantitatEstoc}
-              onChange={(e) => setQuantitatEstoc(e.target.value)}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
-              disabled={mutacio.isPending}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Unitat *</label>
-            <input
-              type="text"
-              value={unitatEstoc}
-              onChange={(e) => setUnitatEstoc(e.target.value)}
-              placeholder="ml, g, unitats..."
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
-              disabled={mutacio.isPending}
-            />
-          </div>
-        </div>
-
-        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Posologia estàndard</label>
           <textarea
             value={posologiaStandard}
@@ -167,31 +118,17 @@ export function ModalNouMedicament({ onTancar, onDesat }: ModalNouMedicamentProp
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Preu de compra (€) *</label>
-            <input
-              type="number"
-              step="0.01"
-              value={preuCompra}
-              onChange={(e) => setPreuCompra(e.target.value)}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
-              disabled={mutacio.isPending}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Dies de supressió *</label>
-            <input
-              type="number"
-              min="0"
-              value={diesSupressio}
-              onChange={(e) => setDiesSupressio(e.target.value)}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
-              disabled={mutacio.isPending}
-            />
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Dies de supressió *</label>
+          <input
+            type="number"
+            min="0"
+            value={diesSupressio}
+            onChange={(e) => setDiesSupressio(e.target.value)}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
+            disabled={mutacio.isPending}
+          />
         </div>
 
         {mutacio.isError && (

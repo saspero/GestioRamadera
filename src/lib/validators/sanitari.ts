@@ -1,26 +1,42 @@
 import { z } from 'zod'
 
 /**
- * Alta/edició manual d'un medicament (formulari individual, no CSV).
- * @remarks Camps obligatoris segons docs/06_modul_sanitari.md, secció 2.1.
+ * Alta d'un medicament nou al catàleg (dades mestres, no estoc).
+ * @remarks Substitueix l'antic crearMedicamentSchema (que barrejava
+ * dades mestres i d'estoc en un únic formulari) — des de la migració
+ * 10_migracio_cataleg_medicaments.sql, "Nou medicament" només crea
+ * l'entrada del catàleg; l'estoc es dona d'alta per separat amb
+ * afegirEntradaMedicamentSchema.
  */
-export const crearMedicamentSchema = z.object({
+export const crearMedicamentCatalegSchema = z.object({
   nomMedicament: z.string().trim().min(1, 'El nom és obligatori').max(255),
   principiActiu: z.string().trim().min(1, 'El principi actiu és obligatori').max(255),
-  lot: z.string().trim().min(1, 'El lot és obligatori').max(100),
-  quantitatEstoc: z.number().nonnegative({ message: 'L\'estoc no pot ser negatiu' }),
-  unitatEstoc: z.string().trim().min(1, 'La unitat és obligatòria').max(20),
   posologiaStandard: z.string().trim().max(1000).optional().or(z.literal('')),
-  preuCompra: z.number().nonnegative({ message: 'El preu no pot ser negatiu' }),
   diesSupressio: z.number().int().nonnegative({ message: 'Els dies de supressió no poden ser negatius' }),
 })
 
 /**
+ * Alta d'una entrada d'estoc (compra/lot) d'un medicament ja existent
+ * al catàleg.
+ * @remarks `quantitatEstoc` correspon al "nombre d'ampolles o sobres"
+ * (o la unitat que correspongui) — el camp és el mateix, només canvia
+ * l'etiqueta mostrada a la UI segons el context.
+ */
+export const afegirEntradaMedicamentSchema = z.object({
+  medicamentCatalegId: z.number().int().positive({ message: 'Cal seleccionar un medicament del catàleg' }),
+  lot: z.string().trim().min(1, 'El lot és obligatori').max(100),
+  quantitatEstoc: z.number().nonnegative({ message: 'L\'estoc no pot ser negatiu' }),
+  unitatEstoc: z.string().trim().min(1, 'La unitat és obligatòria').max(20),
+  preuCompra: z.number().nonnegative({ message: 'El preu no pot ser negatiu' }),
+})
+
+/**
  * Validació d'una fila del CSV de medicaments.
- * @remarks Els valors numèrics arriben com a string amb coma decimal
- * (docs/06_modul_sanitari.md, secció 3.2) — la conversió a número es
- * fa a la capa d'aplicació, no aquí (aquest schema valida el format
- * de text abans de parsejar-lo).
+ * @remarks Format SENSE CANVIS (decisió confirmada): cada fila
+ * segueix portant totes les dades encara que el medicament ja
+ * existeixi al catàleg — la lògica de crear/reutilitzar el catàleg
+ * es resol a importarMedicamentsMassiu()
+ * (src/lib/db/queries/sanitari.ts), no aquí.
  */
 export const filaCsvMedicamentSchema = z.object({
   nom_medicament: z.string().trim().min(1, 'Nom obligatori').max(255),
@@ -52,7 +68,8 @@ export const aplicarTractamentSchema = z.object({
   notes: z.string().trim().max(1000).optional().or(z.literal('')),
 })
 
-export type CrearMedicamentInput = z.infer<typeof crearMedicamentSchema>
+export type CrearMedicamentCatalegInput = z.infer<typeof crearMedicamentCatalegSchema>
+export type AfegirEntradaMedicamentInput = z.infer<typeof afegirEntradaMedicamentSchema>
 export type FilaCsvMedicamentInput = z.infer<typeof filaCsvMedicamentSchema>
 export type BulkImportMedicamentsInput = z.infer<typeof bulkImportMedicamentsSchema>
 export type AplicarTractamentInput = z.infer<typeof aplicarTractamentSchema>

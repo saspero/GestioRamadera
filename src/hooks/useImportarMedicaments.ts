@@ -54,13 +54,23 @@ export function useImportarMedicaments() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error en la importació')
-      return json as { nombreCreats: number; nombreActualitzats: number }
+      return json as {
+        nombreCatalegsCreats: number
+        nombreEntradesCreades: number
+        nombreEntradesActualitzades: number
+      }
     },
     onSuccess: (resultat) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sanitari.medicaments })
-      toastExit(
-        `${resultat.nombreCreats} medicaments nous, ${resultat.nombreActualitzats} amb estoc actualitzat`
-      )
+      queryClient.invalidateQueries({ queryKey: queryKeys.sanitari.medicamentsCataleg })
+      const parts = [`${resultat.nombreEntradesCreades} entrades noves`]
+      if (resultat.nombreEntradesActualitzades > 0) {
+        parts.push(`${resultat.nombreEntradesActualitzades} amb estoc actualitzat`)
+      }
+      if (resultat.nombreCatalegsCreats > 0) {
+        parts.push(`${resultat.nombreCatalegsCreats} medicaments nous al catàleg`)
+      }
+      toastExit(parts.join(', '))
       setErrorGeneral(null)
     },
     onError: (err) => {

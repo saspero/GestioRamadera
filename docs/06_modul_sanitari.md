@@ -15,6 +15,7 @@
 | Aplicació de tractaments individual/per lot (secció 4) | ✅ Implementat | Mateixos camps als dos modes, sense personalització per animal |
 | Bloqueig comercial per supressió | ✅ Implementat (des del Dashboard i Arxiu) | Ja funcional des de lliuraments anteriors; el mòdul Sanitari només crea el tractament, el bloqueig ja actuava |
 | Impacte econòmic per animal (secció 5) | ❌ Pendent | Càlcul de cost sanitari acumulat, encara no implementat als informes |
+| Catàleg de Medicaments separat de l'estoc | ✅ Implementat (juliol 2026) | Mateix patró que "Tipus de Pinso" a Magatzems |
 
 ### 0.1. Decisions ampliades sobre el disseny original
 
@@ -58,6 +59,44 @@ El Mòdul Sanitari gestiona l'inventari de medicaments de la granja i l'aplicaci
 - La combinació `nom_medicament + lot` s'utilitza per detectar duplicats en la càrrega CSV (vegeu secció 3.3).
 - Quan `quantitat_estoc` arriba a 0, el medicament segueix visible a l'historial però no és seleccionable per aplicar tractaments nous.
 
+---
+
+## 2b. Catàleg de Medicaments [NOU — juliol 2026]
+
+### 2b.1. Motivació
+
+La fitxa del medicament (secció 2) barrejava dades mestres (nom,
+principi actiu, posologia, dies de supressió — que no canvien) amb
+dades de cada compra/lot (lot, quantitat, preu — que sí canvien).
+Es va separar en dues taules: `medicaments_cataleg` (dades mestres)
+i `medicaments` (entrades d'estoc, referenciant el catàleg per FK).
+
+### 2b.2. Flux
+
+- **"Nou medicament"** (pestanya Catàleg): crea només l'entrada de
+  catàleg — nom, principi actiu, posologia estàndard, dies de
+  supressió. No demana lot ni quantitat.
+- **"Afegir entrada"** (pestanya Magatzem sanitari): selecciona un
+  medicament ja existent al catàleg i en registra una entrada
+  d'estoc — lot, **nombre d'ampolles o sobres**, unitat, preu.
+
+### 2b.3. Importació CSV — format sense canvis
+
+El format del fitxer CSV es manté idèntic (secció 3.2, sense
+canvis) — cada fila continua incloent totes les dades del
+medicament. Internament: si el nom del medicament ja existeix al
+catàleg, la fila només afegeix una entrada d'estoc (ignorant
+principi actiu/posologia/dies de supressió del CSV, que podrien no
+coincidir amb el catàleg ja existent); si és nou, es crea el
+catàleg i l'entrada d'estoc alhora, automàticament.
+
+### 2b.4. Migració de dades
+
+Migració `database/10_migracio_cataleg_medicaments.sql` — a
+diferència d'altres migracions d'aquest projecte, aquesta **preserva
+les dades existents** (trasllada automàticament els medicaments ja
+donats d'alta al nou catàleg, deduplicats per nom).
+  
 ---
 
 ## 3. Importació Massiva de Medicaments (CSV)
@@ -205,3 +244,5 @@ Aquest cost s'acumula a l'historial econòmic de l'animal i es reflecteix als in
 | `/api/sanitari/medicaments/bulk-import` | POST | Admin, Veterinari | Confirma la importació (actualitza duplicats automàticament) |
 | `/api/sanitari/tractaments` | GET | Tots | Llistat de tractaments aplicats |
 | `/api/sanitari/tractaments` | POST | Admin, Veterinari | Aplica un tractament (individual o `lotId` per expandir-lo) |
+| `/api/sanitari/medicaments-cataleg` | GET, POST | Admin, Veterinari (GET: tots 3 rols) | Llistat i creació de medicaments al catàleg |
+| `/api/sanitari/medicaments` | POST | Admin, Veterinari | **Canvi de semàntica**: ara afegeix una entrada d'estoc (`medicamentCatalegId`, lot, quantitat, unitat, preu), no crea el catàleg |

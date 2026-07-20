@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import type { TenantContext, Rol } from '@/lib/db/client'
-import { trobarMedicamentsExistents } from '@/lib/db/queries/sanitari'
+import { trobarEntradesExistents } from '@/lib/db/queries/sanitari'
 
 const comprovarSchema = z.object({
   combinacions: z
@@ -21,7 +21,7 @@ const comprovarSchema = z.object({
  * @returns JSON { existents: boolean[] } (mateix ordre que combinacions), o 401/403
  *
  * @remarks Control d'accés: Admin i Veterinari.
- * @remarks Multitenancy: delega a trobarMedicamentsExistents
+ * @remarks Multitenancy: delega a trobarEntradesExistents
  * (src/lib/db/queries/sanitari.ts), aïllada via queryTenant/search_path.
  */
 export async function POST(request: NextRequest) {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Dades incorrectes' }, { status: 400 })
     }
 
-    const ids = await trobarMedicamentsExistents(ctx, parsed.data.combinacions)
+    const ids = await trobarEntradesExistents(ctx, parsed.data.combinacions)
     return NextResponse.json({ existents: ids.map((id) => id !== null) })
   } catch (error) {
     console.error('[POST /api/sanitari/medicaments/comprovar-duplicats]', error)
