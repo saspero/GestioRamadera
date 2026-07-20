@@ -151,6 +151,11 @@ export async function getFiltresAnimals(ctx: TenantContext): Promise<FiltresAnim
  * consultes independents (dades bàsiques, ubicació, pesos,
  * tractaments) en comptes d'un únic JOIN gegant, per simplicitat —
  * el volum de files per animal és sempre baix.
+ * @remarks FIX (juliol 2026): la consulta de historialTractaments
+ * afegeix el JOIN a medicaments_cataleg per obtenir nom_medicament
+ * — des de la migració 10_migracio_cataleg_medicaments.sql, aquesta
+ * columna ja no viu a `medicaments` (error 42703 "column
+ * m.nom_medicament does not exist" abans d'aquest fix).
  */
 export async function getFitxaAnimal(
   ctx: TenantContext,
@@ -220,14 +225,15 @@ export async function getFitxaAnimal(
       ctx,
       `SELECT
          t.id,
-         m.nom_medicament   AS "nomMedicament",
+         mc.nom_medicament  AS "nomMedicament",
          t.data_inici       AS "dataInici",
          t.data_alliberament AS "dataAlliberament",
          t.dosi_aplicada    AS "dosiAplicada",
          t.unitat_dosi      AS "unitatDosi",
          t.notes
        FROM tractaments t
-       JOIN medicaments m ON m.id = t.medicament_id
+       JOIN medicaments m          ON m.id = t.medicament_id
+       JOIN medicaments_cataleg mc ON mc.id = m.medicament_cataleg_id
        WHERE t.animal_id = $1
        ORDER BY t.data_inici DESC`,
       [animalId]
