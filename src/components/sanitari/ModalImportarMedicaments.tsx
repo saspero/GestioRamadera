@@ -100,7 +100,9 @@ export function ModalImportarMedicaments({
         <div className="text-center py-8">
           <CircleCheckBig size={48} className="mx-auto text-green-600 mb-3" />
           <p className="text-lg font-semibold text-gray-900">
-            {resultat.nombreCreats} medicaments nous, {resultat.nombreActualitzats} amb estoc actualitzat
+            {resultat.nombreEntradesCreades} entrades noves
+            {resultat.nombreEntradesActualitzades > 0 && `, ${resultat.nombreEntradesActualitzades} amb estoc actualitzat`}
+            {resultat.nombreCatalegsCreats > 0 && `, ${resultat.nombreCatalegsCreats} medicaments nous al catàleg`}
           </p>
         </div>
       ) : files.length === 0 ? (
