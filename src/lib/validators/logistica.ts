@@ -73,6 +73,8 @@ export const registrarEntradaEstocSchema = z.object({
       })
     )
     .min(1, 'Cal repartir la quantitat en almenys un magatzem'),
+  /** Només aplicable si tipus === 'sitja'. Opcional — si s'informa, s'aplica a totes les sitges del repartiment. */
+  tipusPinsoId: z.number().int().positive().optional(),
 })
 
 export type RegistrarConsumInput = z.infer<typeof registrarConsumSchema>

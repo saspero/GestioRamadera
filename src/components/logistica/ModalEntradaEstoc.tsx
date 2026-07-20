@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { ModalAccions } from '@/components/ui/ModalAccions'
 import { queryKeys } from '@/lib/query/queryKeys'
 import { toastExit, toastError } from '@/lib/toast/toastHelpers'
-import type { Sitja, MagatzemFarratge, TipusOrigen } from '@/types/logistica'
+import type { Sitja, MagatzemFarratge, TipusOrigen, TipusPinso } from '@/types/logistica'
 
 type ModalEntradaEstocProps = {
   onTancar: () => void
@@ -34,6 +34,11 @@ type FilaRepartiment = { id: number | ''; quantitat: string }
  * descompta ni implica cap animal (l'aliment encara no s'ha
  * consumit). No té relació amb el Destí/nau vinculada del formulari
  * de Consums Massius.
+ * @remarks Tipus de pinso (bug corregit, juliol 2026): un únic
+ * desplegable opcional, només visible en mode Sitges, aplicable a
+ * TOTES les sitges de l'entrada alhora (no un per sitja) — abans no
+ * hi havia manera d'assignar el tipus de pinso des d'aquest
+ * formulari.
  * @remarks Control d'accés: només es munta des de pantalles ja
  * protegides per a Admin/Treballador.
  */
@@ -50,6 +55,11 @@ export function ModalEntradaEstoc({ onTancar, onRegistrat }: ModalEntradaEstocPr
     queryKey: queryKeys.logistica.magatzems,
     queryFn: () => fetch('/api/logistica/magatzems').then((res) => res.json()).then((j) => j.magatzems),
   })
+  const { data: tipusPinso = [] } = useQuery<TipusPinso[]>({
+    queryKey: queryKeys.logistica.tipusPinso,
+    queryFn: () => fetch('/api/logistica/tipus-pinso').then((res) => res.json()).then((j) => j.tipusPinso),
+  })
+  const [tipusPinsoId, setTipusPinsoId] = useState<number | ''>('')
 
   const opcions =
     tipus === 'sitja'
@@ -59,6 +69,7 @@ export function ModalEntradaEstoc({ onTancar, onRegistrat }: ModalEntradaEstocPr
   function handleTipusChange(nouTipus: TipusOrigen) {
     setTipus(nouTipus)
     setFiles([{ id: '', quantitat: '' }])
+    setTipusPinsoId('')
   }
 
   function actualitzarFila(idx: number, camp: keyof FilaRepartiment, valor: string) {
@@ -88,6 +99,7 @@ export function ModalEntradaEstoc({ onTancar, onRegistrat }: ModalEntradaEstocPr
         body: JSON.stringify({
           tipus,
           repartiment: filesValides.map((f) => ({ id: Number(f.id), quantitat: Number(f.quantitat) })),
+          tipusPinsoId: tipus === 'sitja' && tipusPinsoId ? Number(tipusPinsoId) : undefined,
         }),
       })
       const json = await res.json()
@@ -140,6 +152,26 @@ export function ModalEntradaEstoc({ onTancar, onRegistrat }: ModalEntradaEstocPr
             </button>
           </div>
         </div>
+
+        {tipus === 'sitja' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Tipus de pinso
+              <span className="font-normal text-gray-400"> (opcional — s&apos;aplica a totes les sitges d&apos;aquesta entrada)</span>
+            </label>
+            <select
+              value={tipusPinsoId}
+              onChange={(e) => setTipusPinsoId(e.target.value ? Number(e.target.value) : '')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
+              disabled={mutacio.isPending}
+            >
+              <option value="">Sense canviar</option>
+              {tipusPinso.map((t) => (
+                <option key={t.id} value={t.id}>{t.codi} — {t.nom}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">

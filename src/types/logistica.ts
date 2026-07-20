@@ -72,6 +72,8 @@ export type FilaEntradaEstoc = {
 export type RegistrarEntradaEstocInput = {
   tipus: TipusOrigen
   repartiment: FilaEntradaEstoc[]
+  /** Només aplicable si tipus === 'sitja'. Si s'informa, s'aplica a totes les sitges del repartiment. */
+  tipusPinsoId?: number
 }
 
 /** Component (ingredient) d'un tipus de pinso, amb el seu percentatge. */
