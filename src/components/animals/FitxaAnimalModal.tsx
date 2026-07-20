@@ -1,17 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import { Skull } from 'lucide-react'
+import { Skull, Syringe } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDate, formatNumber } from '@/lib/format'
 import { Modal } from '@/components/ui/Modal'
 import { queryKeys } from '@/lib/query/queryKeys'
 import { ModalBaixa } from './ModalBaixa'
+import { ModalAplicarTractament } from '@/components/sanitari/ModalAplicarTractament'
 import type { FitxaAnimal } from '@/types/animals-extra'
 
 type FitxaAnimalModalProps = {
   animalId: number
-  /** Si false (rol Treballador), s'amaga el botó de donar de baixa. */
+  /** Si false (rol Treballador), s'amaguen els botons de donar de baixa i aplicar tractament (Admin/Veterinari en ambdós casos). */
   potDonarBaixa: boolean
   onTancar: () => void
   onBaixaRegistrada: () => void
@@ -26,23 +27,31 @@ const COLORS_SALUT: Record<string, string> = {
 
 /**
  * Modal amb la fitxa completa d'un animal: dades bàsiques, ubicació
- * actual, historial de pesos, historial de tractaments, i botó per
- * donar-lo de baixa.
+ * actual, historial de pesos, historial de tractaments, i botons
+ * per aplicar un tractament o donar-lo de baixa.
  *
  * @param props.animalId - Id de l'animal a mostrar
- * @param props.potDonarBaixa - Si false, s'amaga el botó de baixa
+ * @param props.potDonarBaixa - Si false, s'amaguen els botons de baixa i tractament
  * @param props.onTancar - Callback per tancar el modal
  * @param props.onBaixaRegistrada - Callback en confirmar una baixa
- * @returns Modal amb la fitxa de només lectura + ModalBaixa opcional
+ * @returns Modal amb la fitxa de només lectura + ModalBaixa/ModalAplicarTractament opcionals
  *
+ * @remarks Connexió pendent des del lliurament del mòdul Sanitari,
+ * ara resolta: "Aplicar tractament" obre ModalAplicarTractament amb
+ * `animalIdPreseleccionat={animalId}` (mode individual ja fixat,
+ * sense selector de lot). En confirmar, la invalidació de
+ * queryKeys.animals.all que ja fa ModalAplicarTractament també
+ * refresca queryKeys.animals.fitxa(animalId) (coincidència de
+ * prefix a React Query) — la fitxa es refresca sola, sense cap
+ * gestió addicional aquí.
  * @remarks MIGRACIÓ REACT QUERY: la fitxa es carrega amb useQuery
  * (queryKeys.animals.fitxa(animalId)) en comptes de fetch+useEffect
  * manual. ModalBaixa (migrat a useMutation) ja invalida
  * queryKeys.animals.all internament en confirmar — aquest component
  * no necessita gestionar-ho.
- * @remarks Control d'accés: la fitxa és visible per als 3 rols. El
- * botó de baixa només per a Admin i Veterinari — comprovació només
- * visual, l'endpoint torna a validar el rol.
+ * @remarks Control d'accés: la fitxa és visible per als 3 rols. Els
+ * botons de tractament i baixa només per a Admin i Veterinari —
+ * comprovació només visual, els endpoints tornen a validar el rol.
  * @remarks Reutilitza exactament els camps documentats a
  * docs/07_modul_arxiu_historic.md per al registre de baixa.
  */
@@ -53,6 +62,7 @@ export function FitxaAnimalModal({
   onBaixaRegistrada,
 }: FitxaAnimalModalProps) {
   const [modalBaixaObert, setModalBaixaObert] = useState(false)
+  const [modalTractamentObert, setModalTractamentObert] = useState(false)
 
   const { data: fitxa, isLoading } = useQuery<FitxaAnimal>({
     queryKey: queryKeys.animals.fitxa(animalId),
@@ -67,14 +77,24 @@ export function FitxaAnimalModal({
 
   const peu =
     fitxa && potDonarBaixa && fitxa.estatActiu ? (
-      <button
-        onClick={() => setModalBaixaObert(true)}
-        className="flex items-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100
-                   text-red-700 font-medium rounded-lg min-h-[44px]"
-      >
-        <Skull size={18} aria-hidden="true" />
-        Donar de baixa
-      </button>
+      <>
+        <button
+          onClick={() => setModalTractamentObert(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300
+                     hover:bg-gray-50 text-gray-700 font-medium rounded-lg min-h-[44px]"
+        >
+          <Syringe size={18} aria-hidden="true" />
+          Aplicar tractament
+        </button>
+        <button
+          onClick={() => setModalBaixaObert(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100
+                     text-red-700 font-medium rounded-lg min-h-[44px]"
+        >
+          <Skull size={18} aria-hidden="true" />
+          Donar de baixa
+        </button>
+      </>
     ) : undefined
 
   return (
@@ -209,6 +229,14 @@ export function FitxaAnimalModal({
           animalDib={fitxa.dib}
           onTancar={() => setModalBaixaObert(false)}
           onConfirmada={handleBaixaConfirmada}
+        />
+      )}
+
+      {modalTractamentObert && fitxa && (
+        <ModalAplicarTractament
+          animalIdPreseleccionat={animalId}
+          onTancar={() => setModalTractamentObert(false)}
+          onAplicat={() => setModalTractamentObert(false)}
         />
       )}
     </Modal>
