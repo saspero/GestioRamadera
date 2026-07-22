@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Upload, CircleCheckBig } from 'lucide-react'
+import { Upload, Download, CircleCheckBig } from 'lucide-react'
 import { useAltaMassiva } from '@/hooks/useAltaMassiva'
 import { Modal } from '@/components/ui/Modal'
 
@@ -61,6 +61,7 @@ export function ModalAltaMassiva({ onTancar, onImportacioCompletada }: ModalAlta
     processarFitxer,
     alternarOmesa,
     confirmarImportacio,
+    descarregarPlantilla,
     reiniciar,
   } = useAltaMassiva()
 
@@ -88,9 +89,9 @@ export function ModalAltaMassiva({ onTancar, onImportacioCompletada }: ModalAlta
   }
 
   function handleConfirmar() {
-    if (racaId === '' || cortId === '') return
+    if (cortId === '') return
     confirmarImportacio({
-      racaId: Number(racaId),
+      racaId: racaId !== '' ? Number(racaId) : undefined,
       lotId: lotMode === 'existent' && lotId !== '' ? Number(lotId) : null,
       lotNouNom: lotMode === 'nou' && lotNouNom.trim() ? lotNouNom.trim() : null,
       cortId: Number(cortId),
@@ -100,7 +101,6 @@ export function ModalAltaMassiva({ onTancar, onImportacioCompletada }: ModalAlta
   const potConfirmar =
     filesValides.length > 0 &&
     !teFilesBloquejades &&
-    racaId !== '' &&
     cortId !== '' &&
     (lotMode === 'existent' ? lotId !== '' : lotNouNom.trim().length > 0)
 
@@ -157,9 +157,36 @@ export function ModalAltaMassiva({ onTancar, onImportacioCompletada }: ModalAlta
       ) : files.length === 0 ? (
         <div className="text-center py-10">
           <Upload size={40} className="mx-auto text-gray-400 mb-3" />
-          <p className="text-gray-600 mb-4">
-            Puja un fitxer CSV amb les columnes: dib, data_naixement, sexe (i opcionalment lot_nom)
+          <p className="text-gray-600 mb-2">
+            Puja un fitxer CSV amb les columnes: dib, data_naixement, sexe, lot_nom
           </p>
+
+          <div className="max-w-sm mx-auto text-left bg-gray-50 rounded-lg px-4 py-3 mb-4 text-sm">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left text-gray-500">
+                  <th className="pb-1 font-medium">Camp</th>
+                  <th className="pb-1 font-medium">Obligatori</th>
+                </tr>
+              </thead>
+              <tbody className="text-gray-700">
+                <tr><td className="py-0.5">dib</td><td className="py-0.5">Sí</td></tr>
+                <tr><td className="py-0.5">data_naixement</td><td className="py-0.5">No (AAAA-MM-DD)</td></tr>
+                <tr><td className="py-0.5">sexe</td><td className="py-0.5">No (Mascle/Femella)</td></tr>
+                <tr><td className="py-0.5">lot_nom</td><td className="py-0.5">No</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <button
+            onClick={descarregarPlantilla}
+            className="flex items-center gap-2 mx-auto mb-4 px-3 py-2 text-sm text-primary-600
+                       hover:text-primary-700 font-medium"
+          >
+            <Download size={16} aria-hidden="true" />
+            Descarregar plantilla CSV
+          </button>
+
           <input
             ref={inputFileRef}
             type="file"
@@ -243,13 +270,16 @@ export function ModalAltaMassiva({ onTancar, onImportacioCompletada }: ModalAlta
               </h3>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Raça</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Raça
+                  <span className="font-normal text-gray-400"> (opcional)</span>
+                </label>
                 <select
                   value={racaId}
                   onChange={(e) => setRacaId(e.target.value ? Number(e.target.value) : '')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base"
                 >
-                  <option value="">Selecciona una raça</option>
+                  <option value="">Sense raça assignada</option>
                   {catalegs?.races.map((r) => (
                     <option key={r.id} value={r.id}>{r.nomRaca}</option>
                   ))}

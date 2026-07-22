@@ -23,7 +23,7 @@ type EstatParsing = 'idle' | 'parsejant' | 'comprovant' | 'llest' | 'error'
 const CAPÇALERA_ESPERADA = ['dib', 'data_naixement', 'sexe']
 
 type Assignacio = {
-  racaId: number
+  racaId?: number
   lotId: number | null
   lotNouNom: string | null
   cortId: number
@@ -199,6 +199,33 @@ export function useAltaMassiva() {
     mutacio.reset()
   }, [mutacio])
 
+  /**
+   * Genera i descarrega una plantilla CSV buida (només capçalera +
+   * una fila d'exemple a esborrar), perquè l'usuari sàpiga exactament
+   * quines columnes calen abans de preparar el seu fitxer real.
+   *
+   * @remarks Nou (juliol 2026). La descripció de quins camps són
+   * obligatoris/opcionals es dona com a text a la interfície (sota
+   * el botó de descàrrega), no dins del CSV — un CSV no admet
+   * comentaris de manera fiable i una fila "de text explicatiu" es
+   * podria arribar a importar per error si l'usuari s'oblida
+   * d'esborrar-la.
+   */
+  const descarregarPlantilla = useCallback(() => {
+    const contingut = [
+      CAPÇALERA_ESPERADA.concat('lot_nom').join(','),
+      '123456789,2026-01-15,Mascle,Exemple - esborra aquesta fila',
+    ].join('\n')
+
+    const blob = new Blob([contingut], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const enllac = document.createElement('a')
+    enllac.href = url
+    enllac.download = 'plantilla_alta_massiva_animals.csv'
+    enllac.click()
+    URL.revokeObjectURL(url)
+  }, [])
+
   // Combina l'estat de parsing local amb l'estat de la mutació, per
   // exposar la mateixa interfície `estat` que ja consumia el modal.
   const estat =
@@ -212,6 +239,7 @@ export function useAltaMassiva() {
     processarFitxer,
     alternarOmesa,
     confirmarImportacio,
+    descarregarPlantilla,
     reiniciar,
   }
 }

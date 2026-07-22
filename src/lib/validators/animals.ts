@@ -46,9 +46,13 @@ export const filaAltaMassivaSchema = z.object({
  * Assignació base aplicada a tot el bloc d'animals importats
  * (pas 2 del flux d'altes massives). Actua com a valor PER DEFECTE
  * per als animals que no indiquin `lot_nom` propi a la seva fila.
+ *
+ * @remarks `racaId` opcional des de juliol 2026 (decisió confirmada
+ * amb l'usuari) — abans era obligatori a l'alta massiva, tot i que
+ * ja era opcional a l'alta individual (crearAnimalSchema).
  */
 export const assignacioBaseSchema = z.object({
-  racaId: z.number().int().positive({ message: 'Cal seleccionar una raça' }),
+  racaId: z.number().int().positive().optional(),
   lotId: z.number().int().positive().nullable(),
   lotNouNom: z.string().trim().min(1).max(100).nullable(),
   cortId: z.number().int().positive({ message: 'Cal seleccionar una cort' }),

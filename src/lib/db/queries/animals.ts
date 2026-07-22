@@ -14,6 +14,12 @@ import type { FiltresAnimals, FitxaAnimal } from '@/types/animals-extra'
  * exposava els NOMS de lot/cort/zona), sinó en un JOIN directe que
  * exposa també els ids — necessaris per als desplegables de filtre
  * Granja/Zona/Lot (docs/08_modul_llistat_actius.md).
+ * @remarks FIX (juliol 2026): "enSupressio" es calcula amb un EXISTS
+ * escalar, no amb un LEFT JOIN a v_animals_en_supressio — un animal
+ * amb més d'un tractament actiu simultàniament tindria més d'una
+ * fila en aquesta vista, i el LEFT JOIN multiplicava la fila de
+ * l'animal al resultat (una fila duplicada per cada tractament
+ * actiu). L'EXISTS retorna sempre un únic booleà per animal.
  * @remarks Control d'accés: visible per als 3 rols (Admin, Veterinari,
  * Treballador).
  * @remarks Multitenancy: aïllat via queryTenant/search_path.
@@ -38,7 +44,7 @@ export async function getAnimalsActius(ctx: TenantContext): Promise<AnimalActiu[
        u.id             AS "ubicacioId",
        da.data_entrada  AS "dataEntrada",
        (CURRENT_DATE - a.data_naixement) AS "edatDies",
-       (s.animal_id IS NOT NULL) AS "enSupressio"
+       EXISTS (SELECT 1 FROM v_animals_en_supressio s WHERE s.animal_id = a.id) AS "enSupressio"
      FROM animals a
      LEFT JOIN distribucio_animals da ON da.animal_id = a.id AND da.data_sortida IS NULL
      LEFT JOIN lots l                 ON l.id = da.lot_id
@@ -46,7 +52,6 @@ export async function getAnimalsActius(ctx: TenantContext): Promise<AnimalActiu[
      LEFT JOIN zones_infraestructura z ON z.id = c.zona_id
      LEFT JOIN ubicacions u           ON u.id = z.ubicacio_id
      LEFT JOIN races_cataleg r        ON r.id = a.raca_id
-     LEFT JOIN v_animals_en_supressio s ON s.animal_id = a.id
      WHERE a.estat_actiu = TRUE
      ORDER BY a.dib`
   )
@@ -87,7 +92,7 @@ export async function cercarPerDib(
        u.id             AS "ubicacioId",
        da.data_entrada  AS "dataEntrada",
        (CURRENT_DATE - a.data_naixement) AS "edatDies",
-       (s.animal_id IS NOT NULL) AS "enSupressio"
+       EXISTS (SELECT 1 FROM v_animals_en_supressio s WHERE s.animal_id = a.id) AS "enSupressio"
      FROM animals a
      LEFT JOIN distribucio_animals da ON da.animal_id = a.id AND da.data_sortida IS NULL
      LEFT JOIN lots l                 ON l.id = da.lot_id
@@ -95,7 +100,6 @@ export async function cercarPerDib(
      LEFT JOIN zones_infraestructura z ON z.id = c.zona_id
      LEFT JOIN ubicacions u           ON u.id = z.ubicacio_id
      LEFT JOIN races_cataleg r        ON r.id = a.raca_id
-     LEFT JOIN v_animals_en_supressio s ON s.animal_id = a.id
      WHERE a.estat_actiu = TRUE AND a.dib ILIKE $1
      ORDER BY a.dib
      LIMIT 50`,
@@ -450,6 +454,23 @@ export async function resoldreLotsPerNom(
  * única transacció: si qualsevol INSERT falla, tot es desfà.
  * L'aparellament animal↔lot es fa per dib (únic dins la transacció).
  */
+/**
+ * Importa un bloc d'animals de cop (alta massiva), amb assignació
+ * base comuna (raça i cort) per a tots, i lot opcional per fila.
+ *
+ * @param ctx - Context del tenant (schema, usuari, rol)
+ * @param animals - Files ja validades del CSV; `lotId` opcional per fila
+ * @param assignacio - Raça (opcional), lot per defecte i cort de destí
+ * @returns Nombre d'animals creats
+ *
+ * @remarks `racaId` opcional des de juliol 2026 (decisió confirmada
+ * amb l'usuari) — si no s'informa, els animals es creen sense raça
+ * assignada (raca_id NULL), editable individualment després.
+ * @remarks Control d'accés: Admin únicament. Comprovat a l'endpoint.
+ * @remarks Multitenancy: aïllat via queryTenant/search_path. Una
+ * única transacció: si qualsevol INSERT falla, tot es desfà.
+ * L'aparellament animal↔lot es fa per dib (únic dins la transacció).
+ */
 export async function importarAnimalsMassiu(
   ctx: TenantContext,
   animals: {
@@ -458,7 +479,7 @@ export async function importarAnimalsMassiu(
     sexe?: 'Mascle' | 'Femella'
     lotId?: number
   }[],
-  assignacio: { racaId: number; lotId: number | null; lotNouNom: string | null; cortId: number }
+  assignacio: { racaId?: number; lotId: number | null; lotNouNom: string | null; cortId: number }
 ): Promise<{ nombreCreats: number }> {
   let lotPerDefecte = assignacio.lotId
   if (lotPerDefecte === null) {
@@ -504,7 +525,7 @@ export async function importarAnimalsMassiu(
        RETURNING animal_id, lot_id
      )
      SELECT animal_id, lot_id FROM noves_distribucions`,
-    [dibs, datesNaixement, sexes, lotsFinals, assignacio.racaId, assignacio.cortId]
+    [dibs, datesNaixement, sexes, lotsFinals, assignacio.racaId ?? null, assignacio.cortId]
   )
 
   return { nombreCreats: rows.length }
