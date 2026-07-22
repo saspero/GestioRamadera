@@ -24,6 +24,17 @@ const ETIQUETES_TIPUS: Record<TipusZona, string> = {
 }
 
 /**
+ * Opcions seleccionables en CREAR una zona nova (juliol 2026,
+ * decisió confirmada amb l'usuari): "Cobert d'emmagatzematge" ja no
+ * es crea des d'aquí — els magatzems es creen directament des de
+ * Magatzems, sense passar per cap zona intermèdia. ETIQUETES_TIPUS
+ * es manté amb les 3 entrades perquè encara cal poder mostrar
+ * correctament el nom d'una zona d'aquest tipus ja existent (vegeu
+ * el `<select>` més avall).
+ */
+const OPCIONS_CREACIO: TipusZona[] = ['NAU_ANIMALS', 'PASTURA']
+
+/**
  * Modal de creació/edició d'una Zona dins d'una Granja.
  *
  * @param props.ubicacioId - Granja on es crearà la zona
@@ -32,6 +43,13 @@ const ETIQUETES_TIPUS: Record<TipusZona, string> = {
  * @param props.onTancar - Callback per tancar el modal sense desar
  * @param props.onSalvat - Callback en confirmar amb èxit
  * @returns Modal amb formulari de nom i tipus de zona
+ *
+ * @remarks "Cobert d'emmagatzematge" ja no és una opció en crear
+ * una zona nova (juliol 2026, decisió confirmada amb l'usuari) —
+ * els magatzems es creen directament des de Magatzems. Una zona
+ * d'aquest tipus creada abans del canvi segueix mostrant-se
+ * correctament en mode edició (tot i que el tipus ja no es pot
+ * canviar mai, com sempre).
  *
  * @remarks MIGRACIÓ REACT QUERY: useMutation pròpia (POST si és nova,
  * PATCH si `zonaExistent`), invalida queryKeys.infraestructura.all.
@@ -115,7 +133,10 @@ export function ModalZona({ ubicacioId, zonaExistent, onTancar, onSalvat }: Moda
             disabled={mutacio.isPending || !!zonaExistent}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base disabled:bg-gray-100"
           >
-            {(Object.keys(ETIQUETES_TIPUS) as TipusZona[]).map((tipus) => (
+            {zonaExistent?.tipusZona === 'COBERT_EMMAGATZEMATGE' && (
+              <option value="COBERT_EMMAGATZEMATGE">{ETIQUETES_TIPUS.COBERT_EMMAGATZEMATGE}</option>
+            )}
+            {OPCIONS_CREACIO.map((tipus) => (
               <option key={tipus} value={tipus}>{ETIQUETES_TIPUS[tipus]}</option>
             ))}
           </select>
